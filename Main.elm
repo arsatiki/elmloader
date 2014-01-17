@@ -6,12 +6,10 @@ foreign import jsevent "input"
         (JS.fromInt 0)
         inputs: Signal JS.JSNumber
 
-square: JS.JSNumber -> JS.JSNumber
-square n = (JS.toInt n)^2 |> JS.fromInt
-
-squares = square <~ inputs
-
 foreign export jsevent "reply"
-        squares: Signal JS.JSNumber
+        outputs: Signal JS.JSNumber
 
+numbers = JS.toInt <~ inputs
+squares = (\n -> n^2) <~ numbers
+outputs = JS.fromInt <~ squares
 
