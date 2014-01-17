@@ -1,9 +1,10 @@
-var eventEmitter = require('events').EventEmitter;
+var events = require('events');
+var emitter = new events.EventEmitter();
 
 function EventShim() {}
 
 // String -> Boolean -> Boolean -> ()
-EventShim.protoype.initEvent = function(t, bubbles, cancellable) {
+EventShim.prototype.initEvent = function(t, bubbles, cancellable) {
 	this.name = t;
 	// Set by Elm.
 	this.value = undefined;
@@ -18,7 +19,7 @@ module.exports = {
 
 	// Event -> ()
 	dispatchEvent: function(e) {
-		eventEmitter.emit(e.name, e.value)
+		emitter.emit(e.name, e.value)
 	},
 	
 	// String -> (Event -> ()) -> ()
@@ -26,7 +27,7 @@ module.exports = {
 		var wrapped = function(value) {
 			callback({value: value});
 		}
-		eventEmitter.on(event, wrapped);
+		emitter.on(event, wrapped);
 	}
 	
 }

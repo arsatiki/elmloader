@@ -1,3 +1,10 @@
 - figure out a way to compile elm code with npm
+-- current hack: hardcoded
+
 - figure out a way to import elm code to node main module
+-- current hack: add require statements by hand
+
 - set up a communication channel between elm and js
+-- reimplemented events using node's own system.
+
+- test that other types work through the channel
