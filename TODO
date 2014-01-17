@@ -1,0 +1,3 @@
+- figure out a way to compile elm code with npm
+- figure out a way to import elm code to node main module
+- set up a communication channel between elm and js

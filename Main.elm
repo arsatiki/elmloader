@@ -1,3 +1,9 @@
-import Mouse
+module Logger where
 
-main = asText <~ Mouse.position
+import JavaScript as JS
+
+foreign import jsevent "message"
+        (JS.fromString "")
+        messages: Signal JS.JSString
+
+
