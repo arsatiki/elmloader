@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "make": "elm -o Main.elm && ./combine.sh"
+    "make": "elm -o Main.elm"
   },
   "repository": "",
   "author": "",
