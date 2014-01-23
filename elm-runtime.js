@@ -382,7 +382,7 @@ Elm.Native.JavaScript.make = function(elm) {
 
   function toJS(v) {
       var type = typeof v;
-      if (type === 'number' || type === 'boolean') return v;
+      if (type === 'number' || type === 'boolean' || type === 'string') return v;
       if (type === 'object' && '_' in v) {
           var obj = {};
           for (var k in v) {
@@ -575,7 +575,7 @@ Elm.Native.List.make = function(elm) {
     function append(xs,ys) {
         // append Text
         if (xs.text || ys.text) {
-            return Utils.txt(Utils.makeText('',xs) + Utils.makeText('',ys));
+            return Utils.txt(Utils.makeText(xs) + Utils.makeText(ys));
         }
 
         // append Strings
@@ -790,10 +790,10 @@ Elm.Native.List.make = function(elm) {
 
     function join(sep, xss) {
         if (sep.text) {
-            sep = Utils.makeText('',sep);
+            sep = Utils.makeText(sep);
             xss = toArray(xss);
             for (var i = xss.length; i--; ) {
-                xss[i] = Utils.makeText('',xss[i]);
+                xss[i] = Utils.makeText(xss[i]);
             }
             return Utils.txt(xss.join(sep));
         }
@@ -852,6 +852,89 @@ Elm.Native.List.make = function(elm) {
     };
     return elm.Native.List.values = Elm.Native.List.values;
 
+};
+Elm.Native.Ports = {};
+Elm.Native.Ports.make = function(elm) {
+    elm.Native = elm.Native || {};
+    elm.Native.Ports = elm.Native.Ports || {};
+    if (elm.Native.Ports.values) return elm.Native.Ports.values;
+
+    var Signal = Elm.Signal.make(elm);
+
+    function incomingSignal(converter) {
+        converter.isSignal = true;
+        return converter;
+    }
+
+    function outgoingSignal(converter) {
+        return function(signal) {
+            var subscribers = []
+            function subscribe(handler) {
+                subscribers.push(handler);
+            }
+            function unsubscribe(handler) {
+                subscribers.pop(subscribers.indexOf(handler));
+            }
+            A2( Signal.lift, function(value) {
+                var val = converter(value);
+                var len = subscribers.length;
+                for (var i = 0; i < len; ++i) {
+                    subscribers[i](val);
+                }
+            }, signal);
+            return { subscribe:subscribe, unsubscribe:unsubscribe };
+        }
+    }
+
+    function portIn(name, converter) {
+        var jsValue = elm.ports.incoming[name];
+        if (jsValue === undefined) {
+            throw new Error("Initialization Error: port '" + name +
+                            "' was not given an input!");
+        }
+        elm.ports.uses[name] += 1;
+        try {
+            var elmValue = converter(jsValue);
+        } catch(e) {
+            throw new Error("Initialization Error on port '" + name + "': \n" + e.message);
+        }
+
+        // just return a static value if it is not a signal
+        if (!converter.isSignal) {
+            return elmValue;
+        }
+
+        // create a signal if necessary
+        var signal = Signal.constant(elmValue);
+        function send(jsValue) {
+            try {
+                var elmValue = converter(jsValue);
+            } catch(e) {
+                throw new Error("Error sending to port '" + name + "': \n" + e.message);
+            }
+            setTimeout(function() {
+                elm.notify(signal.id, elmValue);
+            }, 0);
+        }
+        elm.ports.outgoing[name] = { send:send };
+        return signal;
+    }
+
+    function portOut(name, converter, value) {
+        try {
+            elm.ports.outgoing[name] = converter(value);
+        } catch(e) {
+            throw new Error("Initialization Error on port '" + name + "': \n" + e.message);
+        }
+        return value;
+    }
+
+    return elm.Native.Ports.values = {
+        incomingSignal: incomingSignal,
+        outgoingSignal: outgoingSignal,
+        portOut: portOut,
+        portIn: portIn
+    };
 };
 Elm.Native.Regex = {};
 Elm.Native.Regex.make = function(elm) {
@@ -1423,10 +1506,11 @@ Elm.Native.Text.make = function(elm) {
     function position(align) {
         function create(text) {
             var raw = {
-                ctor:'RawHtml',
-                html: Utils.makeText('text-align:' + align + ';', text),
-                guid: null,
-                args: [],
+                ctor :'RawHtml',
+                html : Utils.makeText(text),
+                align: align,
+                guid : null,
+                args : [],
             };
             var pos = A2(Utils.htmlHeight, 0, raw);
             return A3(Element.newElement, pos._0, pos._1, raw);
@@ -1438,6 +1522,7 @@ Elm.Native.Text.make = function(elm) {
         var raw = {
             ctor:'RawHtml',
             html: text,
+            align: null,
             guid: guid,
             args: [],
         };
@@ -1477,7 +1562,8 @@ Elm.Native.Text.make = function(elm) {
 
         asText : asText,
     };
-};Elm.Native.Transform2D = {};
+};
+Elm.Native.Transform2D = {};
 Elm.Native.Transform2D.make = function(elm) {
 
  elm.Native = elm.Native || {};
@@ -1652,8 +1738,8 @@ Elm.Native.Utils.make = function(elm) {
         return t;
     }
 
-    function makeText(style, text) {
-        var style = style;
+    function makeText(text) {
+        var style = '';
         var line = '';
         var href = '';
         while (true) {
@@ -2950,21 +3036,15 @@ Elm.Basics.make = function (_elm)
                     _elm.Basics = _elm.Basics || {};
                     if (_elm.Basics.values)
                     return _elm.Basics.values
-                    var N = Elm.Native,
-                        _N = N.Utils.make(_elm),
-                        _L = N.List.make(_elm),
-                        _E = N.Error.make(_elm),
-                        _J = N.JavaScript.make(_elm),
+                    var _N = Elm.Native,
+                        _U = _N.Utils.make(_elm),
+                        _L = _N.List.make(_elm),
+                        _E = _N.Error.make(_elm),
+                        _J = _N.JavaScript.make(_elm),
                         $moduleName = "Basics";
                     var Native = Native || {};
                     Native.Basics = Elm.Native.Basics.make(_elm);
                     var _op = {};
-                    _op["||"] = Native.Basics.or;
-                    _op["|>"] = F2(function (x,f)
-                                   {
-                                     return f(x)
-                                   });
-                    var xor = Native.Basics.xor;
                     var uncurry = F2(function (f,_v0)
                                      {
                                        return function ()
@@ -2973,13 +3053,17 @@ Elm.Basics.make = function (_elm)
                                                 {case
                                                  "_Tuple2" :
                                                    return A2(f,_v0._0,_v0._1)}
-                                                _E.Case($moduleName,"on line 338, column 19 to 24");
+                                                _E.Case($moduleName,"on line 354, column 19 to 24");
                                               }()
                                      });
-                    var truncate = Native.Basics.truncate;
-                    var toFloat = Native.Basics.toFloat;
-                    var tan = Native.Basics.tan;
-                    var sqrt = Native.Basics.sqrt;
+                    var curry = F3(function (f,a,b)
+                                   {
+                                     return f({ctor: "_Tuple2", _0: a, _1: b})
+                                   });
+                    var flip = F3(function (f,b,a)
+                                  {
+                                    return A2(f,a,b)
+                                  });
                     var snd = function (_v4)
                               {
                                 return function ()
@@ -2988,27 +3072,9 @@ Elm.Basics.make = function (_elm)
                                          {case
                                           "_Tuple2" :
                                             return _v4._1}
-                                         _E.Case($moduleName,"on line 322, column 13 to 14");
+                                         _E.Case($moduleName,"on line 338, column 13 to 14");
                                        }()
                               };
-                    var sin = Native.Basics.sin;
-                    var round = Native.Basics.round;
-                    var rem = Native.Basics.rem;
-                    var radians = function (t)
-                                  {
-                                    return t
-                                  };
-                    var pi = Native.Basics.pi;
-                    var otherwise = true;
-                    var not = Native.Basics.not;
-                    var mod = Native.Basics.mod;
-                    var min = Native.Basics.min;
-                    var max = Native.Basics.max;
-                    var logBase = Native.Basics.logBase;
-                    var id = function (x)
-                             {
-                               return x
-                             };
                     var fst = function (_v8)
                               {
                                 return function ()
@@ -3017,78 +3083,98 @@ Elm.Basics.make = function (_elm)
                                          {case
                                           "_Tuple2" :
                                             return _v8._0}
-                                         _E.Case($moduleName,"on line 318, column 13 to 14");
+                                         _E.Case($moduleName,"on line 334, column 13 to 14");
                                        }()
                               };
-                    var floor = Native.Basics.floor;
-                    var flip = F3(function (f,b,a)
-                                  {
-                                    return A2(f,a,b)
-                                  });
-                    var e = Native.Basics.e;
-                    var div = Native.Basics.div;
-                    var curry = F3(function (f,a,b)
-                                   {
-                                     return f({ctor: "_Tuple2", _0: a, _1: b})
-                                   });
-                    var cos = Native.Basics.cos;
-                    var compare = Native.Basics.compare;
-                    var clamp = Native.Basics.clamp;
-                    var ceiling = Native.Basics.ceiling;
-                    var atan2 = Native.Basics.atan2;
-                    var atan = Native.Basics.atan;
-                    var asin = Native.Basics.asin;
-                    var acos = Native.Basics.acos;
-                    var abs = Native.Basics.abs;
-                    _op["^"] = Native.Basics.exp;
-                    var LT = {ctor: "LT"};
-                    var GT = {ctor: "GT"};
-                    var EQ = {ctor: "EQ"};
-                    _op[">="] = Native.Basics.ge;
-                    _op[">"] = Native.Basics.gt;
-                    _op["=="] = Native.Basics.eq;
+                    var always = F2(function (a,_v12)
+                                    {
+                                      return function ()
+                                             {
+                                               return a
+                                             }()
+                                    });
+                    var id = function (x)
+                             {
+                               return x
+                             };
                     _op["<|"] = F2(function (f,x)
                                    {
                                      return f(x)
                                    });
-                    _op["<="] = Native.Basics.le;
-                    _op["<"] = Native.Basics.lt;
-                    _op["/="] = Native.Basics.neq;
-                    _op["/"] = Native.Basics.floatDiv;
+                    _op["|>"] = F2(function (x,f)
+                                   {
+                                     return f(x)
+                                   });
                     _op["."] = F3(function (f,g,x)
                                   {
                                     return f(g(x))
                                   });
+                    var toFloat = Native.Basics.toFloat;
+                    var ceiling = Native.Basics.ceiling;
+                    var floor = Native.Basics.floor;
+                    var truncate = Native.Basics.truncate;
+                    var round = Native.Basics.round;
+                    var otherwise = true;
+                    var not = Native.Basics.not;
+                    var xor = Native.Basics.xor;
+                    _op["||"] = Native.Basics.or;
+                    _op["&&"] = Native.Basics.and;
+                    var max = Native.Basics.max;
+                    var min = Native.Basics.min;
+                    var GT = {ctor: "GT"};
+                    var EQ = {ctor: "EQ"};
+                    var LT = {ctor: "LT"};
+                    var compare = Native.Basics.compare;
+                    _op[">="] = Native.Basics.ge;
+                    _op["<="] = Native.Basics.le;
+                    _op[">"] = Native.Basics.gt;
+                    _op["<"] = Native.Basics.lt;
+                    _op["/="] = Native.Basics.neq;
+                    _op["=="] = Native.Basics.eq;
+                    var e = Native.Basics.e;
+                    var pi = Native.Basics.pi;
+                    var clamp = Native.Basics.clamp;
+                    var logBase = Native.Basics.logBase;
+                    var abs = Native.Basics.abs;
+                    var sqrt = Native.Basics.sqrt;
+                    var atan2 = Native.Basics.atan2;
+                    var atan = Native.Basics.atan;
+                    var asin = Native.Basics.asin;
+                    var acos = Native.Basics.acos;
+                    var tan = Native.Basics.tan;
+                    var sin = Native.Basics.sin;
+                    var cos = Native.Basics.cos;
+                    _op["^"] = Native.Basics.exp;
+                    var mod = Native.Basics.mod;
+                    var rem = Native.Basics.rem;
+                    var div = Native.Basics.div;
+                    _op["/"] = Native.Basics.floatDiv;
+                    _op["*"] = Native.Basics.mul;
                     _op["-"] = Native.Basics.sub;
                     _op["+"] = Native.Basics.add;
-                    var toPolar = function (_v12)
+                    var toPolar = function (_v14)
                                   {
                                     return function ()
                                            {
-                                             switch (_v12.ctor)
+                                             switch (_v14.ctor)
                                              {case
                                               "_Tuple2" :
-                                                return {ctor: "_Tuple2", _0: Native.Basics.sqrt(Math.pow(_v12._0,
-                                                                                                         2) + Math.pow(_v12._1,
+                                                return {ctor: "_Tuple2", _0: Native.Basics.sqrt(Math.pow(_v14._0,
+                                                                                                         2) + Math.pow(_v14._1,
                                                                                                                        2)), _1: A2(Native.Basics.atan2,
-                                                                                                                                   _v12._1,
-                                                                                                                                   _v12._0)}}
+                                                                                                                                   _v14._1,
+                                                                                                                                   _v14._0)}}
                                              _E.Case($moduleName,"on line 76, column 18 to 73");
                                            }()
                                   };
-                    _op["*"] = Native.Basics.mul;
-                    var degrees = function (d)
-                                  {
-                                    return d * Native.Basics.pi / 180
-                                  };
-                    var fromPolar = function (_v16)
+                    var fromPolar = function (_v18)
                                     {
                                       return function ()
                                              {
-                                               switch (_v16.ctor)
+                                               switch (_v18.ctor)
                                                {case
                                                 "_Tuple2" :
-                                                  return {ctor: "_Tuple2", _0: _v16._0 * Native.Basics.cos(_v16._1), _1: _v16._0 * Native.Basics.sin(_v16._1)}}
+                                                  return {ctor: "_Tuple2", _0: _v18._0 * Native.Basics.cos(_v18._1), _1: _v18._0 * Native.Basics.sin(_v18._1)}}
                                                _E.Case($moduleName,"on line 70, column 20 to 68");
                                              }()
                                     };
@@ -3096,8 +3182,15 @@ Elm.Basics.make = function (_elm)
                                 {
                                   return 2 * Native.Basics.pi * r
                                 };
-                    _op["&&"] = Native.Basics.and;
-                    _elm.Basics.values = {_op: _op, radians: radians, degrees: degrees, turns: turns, fromPolar: fromPolar, toPolar: toPolar, div: div, rem: rem, mod: mod, cos: cos, sin: sin, tan: tan, acos: acos, asin: asin, atan: atan, atan2: atan2, sqrt: sqrt, abs: abs, logBase: logBase, clamp: clamp, pi: pi, e: e, compare: compare, min: min, max: max, xor: xor, not: not, otherwise: otherwise, round: round, truncate: truncate, floor: floor, ceiling: ceiling, toFloat: toFloat, id: id, fst: fst, snd: snd, flip: flip, curry: curry, uncurry: uncurry, LT: LT, EQ: EQ, GT: GT};
+                    var degrees = function (d)
+                                  {
+                                    return d * Native.Basics.pi / 180
+                                  };
+                    var radians = function (t)
+                                  {
+                                    return t
+                                  };
+                    _elm.Basics.values = {_op: _op, radians: radians, degrees: degrees, turns: turns, fromPolar: fromPolar, toPolar: toPolar, div: div, rem: rem, mod: mod, cos: cos, sin: sin, tan: tan, acos: acos, asin: asin, atan: atan, atan2: atan2, sqrt: sqrt, abs: abs, logBase: logBase, clamp: clamp, pi: pi, e: e, compare: compare, min: min, max: max, xor: xor, not: not, otherwise: otherwise, round: round, truncate: truncate, floor: floor, ceiling: ceiling, toFloat: toFloat, id: id, always: always, fst: fst, snd: snd, flip: flip, curry: curry, uncurry: uncurry, LT: LT, EQ: EQ, GT: GT};
                     return _elm.Basics.values
                   };Elm.Bitwise = Elm.Bitwise || {};
 Elm.Bitwise.make = function (_elm)
@@ -3105,21 +3198,21 @@ Elm.Bitwise.make = function (_elm)
                      _elm.Bitwise = _elm.Bitwise || {};
                      if (_elm.Bitwise.values)
                      return _elm.Bitwise.values
-                     var N = Elm.Native,
-                         _N = N.Utils.make(_elm),
-                         _L = N.List.make(_elm),
-                         _E = N.Error.make(_elm),
-                         _J = N.JavaScript.make(_elm),
+                     var _N = Elm.Native,
+                         _U = _N.Utils.make(_elm),
+                         _L = _N.List.make(_elm),
+                         _E = _N.Error.make(_elm),
+                         _J = _N.JavaScript.make(_elm),
                          $moduleName = "Bitwise";
                      var Native = Native || {};
                      Native.Bitwise = Elm.Native.Bitwise.make(_elm);
                      var _op = {};
-                     var xor = Native.Bitwise.xor;
                      var shiftRightLogical = Native.Bitwise.shiftRightLogical;
                      var shiftRight = Native.Bitwise.shiftRightArithmatic;
                      var shiftLeft = Native.Bitwise.shiftLeft;
-                     var or = Native.Bitwise.or;
                      var complement = Native.Bitwise.complement;
+                     var xor = Native.Bitwise.xor;
+                     var or = Native.Bitwise.or;
                      var and = Native.Bitwise.and;
                      _elm.Bitwise.values = {_op: _op, and: and, or: or, xor: xor, complement: complement, shiftLeft: shiftLeft, shiftRight: shiftRight, shiftRightLogical: shiftRightLogical};
                      return _elm.Bitwise.values
@@ -3129,26 +3222,26 @@ Elm.Char.make = function (_elm)
                   _elm.Char = _elm.Char || {};
                   if (_elm.Char.values)
                   return _elm.Char.values
-                  var N = Elm.Native,
-                      _N = N.Utils.make(_elm),
-                      _L = N.List.make(_elm),
-                      _E = N.Error.make(_elm),
-                      _J = N.JavaScript.make(_elm),
+                  var _N = Elm.Native,
+                      _U = _N.Utils.make(_elm),
+                      _L = _N.List.make(_elm),
+                      _E = _N.Error.make(_elm),
+                      _J = _N.JavaScript.make(_elm),
                       $moduleName = "Char";
                   var Native = Native || {};
                   Native.Char = Elm.Native.Char.make(_elm);
                   var _op = {};
-                  var toUpper = Native.Char.toUpper;
-                  var toLower = Native.Char.toLower;
-                  var toLocaleUpper = Native.Char.toLocaleUpper;
-                  var toLocaleLower = Native.Char.toLocaleLower;
-                  var toCode = Native.Char.toCode;
-                  var isUpper = Native.Char.isUpper;
-                  var isOctDigit = Native.Char.isOctDigit;
-                  var isLower = Native.Char.isLower;
-                  var isHexDigit = Native.Char.isHexDigit;
-                  var isDigit = Native.Char.isDigit;
                   var fromCode = Native.Char.fromCode;
+                  var toCode = Native.Char.toCode;
+                  var toLocaleLower = Native.Char.toLocaleLower;
+                  var toLocaleUpper = Native.Char.toLocaleUpper;
+                  var toLower = Native.Char.toLower;
+                  var toUpper = Native.Char.toUpper;
+                  var isHexDigit = Native.Char.isHexDigit;
+                  var isOctDigit = Native.Char.isOctDigit;
+                  var isDigit = Native.Char.isDigit;
+                  var isLower = Native.Char.isLower;
+                  var isUpper = Native.Char.isUpper;
                   _elm.Char.values = {_op: _op, isUpper: isUpper, isLower: isLower, isDigit: isDigit, isOctDigit: isOctDigit, isHexDigit: isHexDigit, toUpper: toUpper, toLower: toLower, toLocaleUpper: toLocaleUpper, toLocaleLower: toLocaleLower, toCode: toCode, fromCode: fromCode};
                   return _elm.Char.values
                 };Elm.Color = Elm.Color || {};
@@ -3157,27 +3250,16 @@ Elm.Color.make = function (_elm)
                    _elm.Color = _elm.Color || {};
                    if (_elm.Color.values)
                    return _elm.Color.values
-                   var N = Elm.Native,
-                       _N = N.Utils.make(_elm),
-                       _L = N.List.make(_elm),
-                       _E = N.Error.make(_elm),
-                       _J = N.JavaScript.make(_elm),
+                   var _N = Elm.Native,
+                       _U = _N.Utils.make(_elm),
+                       _L = _N.List.make(_elm),
+                       _E = _N.Error.make(_elm),
+                       _J = _N.JavaScript.make(_elm),
                        $moduleName = "Color";
+                   var Basics = Elm.Basics.make(_elm);
                    var Native = Native || {};
                    Native.Color = Elm.Native.Color.make(_elm);
-                   var Basics = Elm.Basics.make(_elm);
                    var _op = {};
-                   var hsva = Native.Color.hsva;
-                   var hsv = Native.Color.hsv;
-                   var greyscale = function (p)
-                                   {
-                                     return A3(hsv,0,0,1 - p)
-                                   };
-                   var grayscale = function (p)
-                                   {
-                                     return A3(hsv,0,0,1 - p)
-                                   };
-                   var complement = Native.Color.complement;
                    var Radial = F5(function (a,b,c,d,e)
                                    {
                                      return {ctor: "Radial", _0: a, _1: b, _2: c, _3: d, _4: e}
@@ -3188,47 +3270,58 @@ Elm.Color.make = function (_elm)
                                      return {ctor: "Linear", _0: a, _1: b, _2: c}
                                    });
                    var linear = Linear;
+                   var hsv = Native.Color.hsv;
+                   var hsva = Native.Color.hsva;
+                   var complement = Native.Color.complement;
+                   var greyscale = function (p)
+                                   {
+                                     return A3(hsv,0,0,1 - p)
+                                   };
+                   var grayscale = function (p)
+                                   {
+                                     return A3(hsv,0,0,1 - p)
+                                   };
                    var Color = F4(function (a,b,c,d)
                                   {
                                     return {ctor: "Color", _0: a, _1: b, _2: c, _3: d}
                                   });
-                   var black = A4(Color,0,0,0,1);
-                   var blue = A4(Color,52,101,164,1);
-                   var brown = A4(Color,193,125,17,1);
-                   var charcoal = A4(Color,85,87,83,1);
-                   var darkBlue = A4(Color,32,74,135,1);
-                   var darkBrown = A4(Color,143,89,2,1);
-                   var darkCharcoal = A4(Color,46,52,54,1);
-                   var darkGray = A4(Color,186,189,182,1);
-                   var darkGreen = A4(Color,78,154,6,1);
-                   var darkGrey = A4(Color,186,189,182,1);
-                   var darkOrange = A4(Color,206,92,0,1);
-                   var darkPurple = A4(Color,92,53,102,1);
-                   var darkRed = A4(Color,164,0,0,1);
-                   var darkYellow = A4(Color,196,160,0,1);
-                   var gray = A4(Color,211,215,207,1);
-                   var green = A4(Color,115,210,22,1);
-                   var grey = A4(Color,211,215,207,1);
-                   var lightBlue = A4(Color,114,159,207,1);
-                   var lightBrown = A4(Color,233,185,110,1);
-                   var lightCharcoal = A4(Color,136,138,133,1);
-                   var lightGray = A4(Color,238,238,236,1);
-                   var lightGreen = A4(Color,138,226,52,1);
-                   var lightGrey = A4(Color,238,238,236,1);
-                   var lightOrange = A4(Color,252,175,62,1);
-                   var lightPurple = A4(Color,173,127,168,1);
-                   var lightRed = A4(Color,239,41,41,1);
-                   var lightYellow = A4(Color,255,233,79,1);
-                   var orange = A4(Color,245,121,0,1);
-                   var purple = A4(Color,117,80,123,1);
-                   var red = A4(Color,204,0,0,1);
+                   var rgba = Color;
                    var rgb = F3(function (r,g,b)
                                 {
                                   return A4(Color,r,g,b,1)
                                 });
-                   var rgba = Color;
-                   var white = A4(Color,255,255,255,1);
+                   var lightRed = A4(Color,239,41,41,1);
+                   var red = A4(Color,204,0,0,1);
+                   var darkRed = A4(Color,164,0,0,1);
+                   var lightOrange = A4(Color,252,175,62,1);
+                   var orange = A4(Color,245,121,0,1);
+                   var darkOrange = A4(Color,206,92,0,1);
+                   var lightYellow = A4(Color,255,233,79,1);
                    var yellow = A4(Color,237,212,0,1);
+                   var darkYellow = A4(Color,196,160,0,1);
+                   var lightGreen = A4(Color,138,226,52,1);
+                   var green = A4(Color,115,210,22,1);
+                   var darkGreen = A4(Color,78,154,6,1);
+                   var lightBlue = A4(Color,114,159,207,1);
+                   var blue = A4(Color,52,101,164,1);
+                   var darkBlue = A4(Color,32,74,135,1);
+                   var lightPurple = A4(Color,173,127,168,1);
+                   var purple = A4(Color,117,80,123,1);
+                   var darkPurple = A4(Color,92,53,102,1);
+                   var lightBrown = A4(Color,233,185,110,1);
+                   var brown = A4(Color,193,125,17,1);
+                   var darkBrown = A4(Color,143,89,2,1);
+                   var black = A4(Color,0,0,0,1);
+                   var white = A4(Color,255,255,255,1);
+                   var lightGrey = A4(Color,238,238,236,1);
+                   var grey = A4(Color,211,215,207,1);
+                   var darkGrey = A4(Color,186,189,182,1);
+                   var lightGray = A4(Color,238,238,236,1);
+                   var gray = A4(Color,211,215,207,1);
+                   var darkGray = A4(Color,186,189,182,1);
+                   var lightCharcoal = A4(Color,136,138,133,1);
+                   var charcoal = A4(Color,85,87,83,1);
+                   var darkCharcoal = A4(Color,46,52,54,1);
                    _elm.Color.values = {_op: _op, rgba: rgba, rgb: rgb, lightRed: lightRed, red: red, darkRed: darkRed, lightOrange: lightOrange, orange: orange, darkOrange: darkOrange, lightYellow: lightYellow, yellow: yellow, darkYellow: darkYellow, lightGreen: lightGreen, green: green, darkGreen: darkGreen, lightBlue: lightBlue, blue: blue, darkBlue: darkBlue, lightPurple: lightPurple, purple: purple, darkPurple: darkPurple, lightBrown: lightBrown, brown: brown, darkBrown: darkBrown, black: black, white: white, lightGrey: lightGrey, grey: grey, darkGrey: darkGrey, lightGray: lightGray, gray: gray, darkGray: darkGray, lightCharcoal: lightCharcoal, charcoal: charcoal, darkCharcoal: darkCharcoal, grayscale: grayscale, greyscale: greyscale, complement: complement, hsva: hsva, hsv: hsv, linear: linear, radial: radial, Color: Color, Linear: Linear, Radial: Radial};
                    return _elm.Color.values
                  };Elm.Date = Elm.Date || {};
@@ -3237,46 +3330,46 @@ Elm.Date.make = function (_elm)
                   _elm.Date = _elm.Date || {};
                   if (_elm.Date.values)
                   return _elm.Date.values
-                  var N = Elm.Native,
-                      _N = N.Utils.make(_elm),
-                      _L = N.List.make(_elm),
-                      _E = N.Error.make(_elm),
-                      _J = N.JavaScript.make(_elm),
+                  var _N = Elm.Native,
+                      _U = _N.Utils.make(_elm),
+                      _L = _N.List.make(_elm),
+                      _E = _N.Error.make(_elm),
+                      _J = _N.JavaScript.make(_elm),
                       $moduleName = "Date";
+                  var Maybe = Elm.Maybe.make(_elm);
                   var Native = Native || {};
                   Native.Date = Elm.Native.Date.make(_elm);
                   var Time = Elm.Time.make(_elm);
-                  var Maybe = Elm.Maybe.make(_elm);
                   var _op = {};
-                  var year = Native.Date.year;
-                  var toTime = Native.Date.toTime;
                   var second = Native.Date.second;
-                  var read = Native.Date.read;
-                  var month = Native.Date.month;
                   var minute = Native.Date.minute;
                   var hour = Native.Date.hour;
                   var dayOfWeek = Native.Date.dayOfWeek;
                   var day = Native.Date.day;
+                  var month = Native.Date.month;
+                  var year = Native.Date.year;
+                  var toTime = Native.Date.toTime;
+                  var read = Native.Date.read;
+                  var Dec = {ctor: "Dec"};
+                  var Nov = {ctor: "Nov"};
+                  var Oct = {ctor: "Oct"};
+                  var Sep = {ctor: "Sep"};
+                  var Aug = {ctor: "Aug"};
+                  var Jul = {ctor: "Jul"};
+                  var Jun = {ctor: "Jun"};
+                  var May = {ctor: "May"};
+                  var Apr = {ctor: "Apr"};
+                  var Mar = {ctor: "Mar"};
+                  var Feb = {ctor: "Feb"};
+                  var Jan = {ctor: "Jan"};
+                  var Sun = {ctor: "Sun"};
+                  var Sat = {ctor: "Sat"};
+                  var Fri = {ctor: "Fri"};
+                  var Thu = {ctor: "Thu"};
                   var Wed = {ctor: "Wed"};
                   var Tue = {ctor: "Tue"};
-                  var Thu = {ctor: "Thu"};
-                  var Sun = {ctor: "Sun"};
-                  var Sep = {ctor: "Sep"};
-                  var Sat = {ctor: "Sat"};
-                  var Oct = {ctor: "Oct"};
-                  var Nov = {ctor: "Nov"};
                   var Mon = {ctor: "Mon"};
-                  var May = {ctor: "May"};
-                  var Mar = {ctor: "Mar"};
-                  var Jun = {ctor: "Jun"};
-                  var Jul = {ctor: "Jul"};
-                  var Jan = {ctor: "Jan"};
-                  var Fri = {ctor: "Fri"};
-                  var Feb = {ctor: "Feb"};
-                  var Dec = {ctor: "Dec"};
                   var Date = {ctor: "Date"};
-                  var Aug = {ctor: "Aug"};
-                  var Apr = {ctor: "Apr"};
                   _elm.Date.values = {_op: _op, read: read, toTime: toTime, year: year, month: month, day: day, dayOfWeek: dayOfWeek, hour: hour, minute: minute, second: second, Date: Date, Mon: Mon, Tue: Tue, Wed: Wed, Thu: Thu, Fri: Fri, Sat: Sat, Sun: Sun, Jan: Jan, Feb: Feb, Mar: Mar, Apr: Apr, May: May, Jun: Jun, Jul: Jul, Aug: Aug, Sep: Sep, Oct: Oct, Nov: Nov, Dec: Dec};
                   return _elm.Date.values
                 };Elm.Dict = Elm.Dict || {};
@@ -3285,122 +3378,49 @@ Elm.Dict.make = function (_elm)
                   _elm.Dict = _elm.Dict || {};
                   if (_elm.Dict.values)
                   return _elm.Dict.values
-                  var N = Elm.Native,
-                      _N = N.Utils.make(_elm),
-                      _L = N.List.make(_elm),
-                      _E = N.Error.make(_elm),
-                      _J = N.JavaScript.make(_elm),
+                  var _N = Elm.Native,
+                      _U = _N.Utils.make(_elm),
+                      _L = _N.List.make(_elm),
+                      _E = _N.Error.make(_elm),
+                      _J = _N.JavaScript.make(_elm),
                       $moduleName = "Dict";
                   var Basics = Elm.Basics.make(_elm);
+                  var List = Elm.List.make(_elm);
                   var Maybe = Elm.Maybe.make(_elm);
                   var Native = Native || {};
                   Native.Error = Elm.Native.Error.make(_elm);
-                  var List = Elm.List.make(_elm);
                   var Native = Native || {};
                   Native.Utils = Elm.Native.Utils.make(_elm);
+                  var String = Elm.String.make(_elm);
                   var _op = {};
                   var Same = {ctor: "Same"};
                   var Remove = {ctor: "Remove"};
-                  var Red = {ctor: "Red"};
-                  var RBNode = F5(function (a,b,c,d,e)
-                                  {
-                                    return {ctor: "RBNode", _0: a, _1: b, _2: c, _3: d, _4: e}
-                                  });
-                  var rotateLeft = function (t)
-                                   {
-                                     return function ()
-                                            {
-                                              switch (t.ctor)
-                                              {case
-                                               "RBNode" :
-                                                 switch (t._4.ctor)
-                                                 {case
-                                                  "RBNode" :
-                                                    return A5(RBNode,
-                                                              t._0,
-                                                              t._4._1,
-                                                              t._4._2,
-                                                              A5(RBNode,Red,t._1,t._2,t._3,t._4._3),
-                                                              t._4._4)}
-                                                 break;}
-                                              return Native.Error.raise("rotateLeft of a node without enough children")
-                                            }()
-                                   };
-                  var rotateLeftIfNeeded = function (t)
-                                           {
-                                             return function ()
-                                                    {
-                                                      switch (t.ctor)
-                                                      {case
-                                                       "RBNode" :
-                                                         switch (t._4.ctor)
-                                                         {case
-                                                          "RBNode" :
-                                                            switch (t._4._0.ctor)
-                                                            {case
-                                                             "Red" :
-                                                               return rotateLeft(t)}
-                                                            break;}
-                                                         break;}
-                                                      return t
-                                                    }()
-                                           };
-                  var rotateRight = function (t)
-                                    {
-                                      return function ()
-                                             {
-                                               switch (t.ctor)
-                                               {case
-                                                "RBNode" :
-                                                  switch (t._3.ctor)
-                                                  {case
-                                                   "RBNode" :
-                                                     return A5(RBNode,
-                                                               t._0,
-                                                               t._3._1,
-                                                               t._3._2,
-                                                               t._3._3,
-                                                               A5(RBNode,
-                                                                  Red,
-                                                                  t._1,
-                                                                  t._2,
-                                                                  t._3._4,
-                                                                  t._4))}
-                                                  break;}
-                                               return Native.Error.raise("rotateRight of a node without enough children")
-                                             }()
-                                    };
-                  var rotateRightIfNeeded = function (t)
-                                            {
-                                              return function ()
-                                                     {
-                                                       switch (t.ctor)
-                                                       {case
-                                                        "RBNode" :
-                                                          switch (t._3.ctor)
-                                                          {case
-                                                           "RBNode" :
-                                                             switch (t._3._0.ctor)
-                                                             {case
-                                                              "Red" :
-                                                                switch (t._3._3.ctor)
-                                                                {case
-                                                                 "RBNode" :
-                                                                   switch (t._3._3._0.ctor)
-                                                                   {case
-                                                                    "Red" :
-                                                                      return rotateRight(t)}
-                                                                   break;}
-                                                                break;}
-                                                             break;}
-                                                          break;}
-                                                       return t
-                                                     }()
-                                            };
+                  var Insert = {ctor: "Insert"};
+                  var showFlag = function (f)
+                                 {
+                                   return function ()
+                                          {
+                                            switch (f.ctor)
+                                            {case
+                                             "Insert" :
+                                               return "Insert"
+                                             case
+                                             "Remove" :
+                                               return "Remove"
+                                             case
+                                             "Same" :
+                                               return "Same"}
+                                            _E.Case($moduleName,"between lines 137 and 142");
+                                          }()
+                                 };
                   var RBEmpty = function (a)
                                 {
                                   return {ctor: "RBEmpty", _0: a}
                                 };
+                  var RBNode = F5(function (a,b,c,d,e)
+                                  {
+                                    return {ctor: "RBNode", _0: a, _1: b, _2: c, _3: d, _4: e}
+                                  });
                   var max = function (t)
                             {
                               return function ()
@@ -3416,200 +3436,26 @@ Elm.Dict.make = function (_elm)
                                            "RBEmpty" :
                                              return {ctor: "_Tuple2", _0: t._1, _1: t._2}}
                                           return max(t._4)}
-                                       _E.Case($moduleName,"between lines 63 and 68");
+                                       _E.Case($moduleName,"between lines 83 and 88");
                                      }()
                             };
-                  var redden = function (t)
-                               {
-                                 return function ()
-                                        {
-                                          switch (t.ctor)
-                                          {case
-                                           "RBEmpty" :
-                                             return Native.Error.raise("can\'t make a Leaf red")
-                                           case
-                                           "RBNode" :
-                                             return A5(RBNode,Red,t._1,t._2,t._3,t._4)}
-                                          _E.Case($moduleName,"between lines 302 and 306");
-                                        }()
-                               };
-                  var NBlack = {ctor: "NBlack"};
+                  var LBBlack = {ctor: "LBBlack"};
                   var LBlack = {ctor: "LBlack"};
-                  var empty = RBEmpty(LBlack);
-                  var findWithDefault = F3(function (base,k,t)
-                                           {
-                                             return function ()
-                                                    {
-                                                      switch (t.ctor)
-                                                      {case
-                                                       "RBEmpty" :
-                                                         switch (t._0.ctor)
-                                                         {case
-                                                          "LBlack" :
-                                                            return base}
-                                                         break;
-                                                       case
-                                                       "RBNode" :
-                                                         return function ()
-                                                                {
-                                                                  var _v71 = A2(Native.Utils.compare,
-                                                                                k,
-                                                                                t._1);
-                                                                  switch (_v71.ctor)
-                                                                  {case
-                                                                   "EQ" :
-                                                                     return t._2
-                                                                   case
-                                                                   "GT" :
-                                                                     return A3(findWithDefault,
-                                                                               base,
-                                                                               k,
-                                                                               t._4)
-                                                                   case
-                                                                   "LT" :
-                                                                     return A3(findWithDefault,
-                                                                               base,
-                                                                               k,
-                                                                               t._3)}
-                                                                  _E.Case($moduleName,
-                                                                          "between lines 86 and 91");
-                                                                }()}
-                                                      _E.Case($moduleName,
-                                                              "between lines 83 and 91");
-                                                    }()
-                                           });
-                  var foldl = F3(function (f,acc,t)
-                                 {
-                                   return function ()
-                                          {
-                                            switch (t.ctor)
-                                            {case
-                                             "RBEmpty" :
-                                               switch (t._0.ctor)
-                                               {case
-                                                "LBlack" :
-                                                  return acc}
-                                               break;
-                                             case
-                                             "RBNode" :
-                                               return A3(foldl,
-                                                         f,
-                                                         A3(f,t._1,t._2,A3(foldl,f,acc,t._3)),
-                                                         t._4)}
-                                            _E.Case($moduleName,"between lines 317 and 322");
-                                          }()
-                                 });
-                  var foldr = F3(function (f,acc,t)
-                                 {
-                                   return function ()
-                                          {
-                                            switch (t.ctor)
-                                            {case
-                                             "RBEmpty" :
-                                               switch (t._0.ctor)
-                                               {case
-                                                "LBlack" :
-                                                  return acc}
-                                               break;
-                                             case
-                                             "RBNode" :
-                                               return A3(foldr,
-                                                         f,
-                                                         A3(f,t._1,t._2,A3(foldr,f,acc,t._4)),
-                                                         t._3)}
-                                            _E.Case($moduleName,"between lines 325 and 330");
-                                          }()
-                                 });
-                  var keys = function (t)
-                             {
-                               return A3(foldr,
-                                         F3(function (k,v,acc)
+                  var showLColor = function (c)
+                                   {
+                                     return function ()
                                             {
-                                              return {ctor: "::", _0: k, _1: acc}
-                                            }),
-                                         _J.toList([]),
-                                         t)
-                             };
-                  var toList = function (t)
-                               {
-                                 return A3(foldr,
-                                           F3(function (k,v,acc)
-                                              {
-                                                return {ctor: "::", _0: {ctor: "_Tuple2", _0: k, _1: v}, _1: acc}
-                                              }),
-                                           _J.toList([]),
-                                           t)
-                               };
-                  var values = function (t)
-                               {
-                                 return A3(foldr,
-                                           F3(function (k,v,acc)
-                                              {
-                                                return {ctor: "::", _0: v, _1: acc}
-                                              }),
-                                           _J.toList([]),
-                                           t)
-                               };
-                  var lookup = F2(function (k,t)
-                                  {
-                                    return function ()
-                                           {
-                                             switch (t.ctor)
-                                             {case
-                                              "RBEmpty" :
-                                                switch (t._0.ctor)
-                                                {case
-                                                 "LBlack" :
-                                                   return Maybe.Nothing}
-                                                break;
-                                              case
-                                              "RBNode" :
-                                                return function ()
-                                                       {
-                                                         var _v93 = A2(Native.Utils.compare,k,t._1);
-                                                         switch (_v93.ctor)
-                                                         {case
-                                                          "EQ" :
-                                                            return Maybe.Just(t._2)
-                                                          case
-                                                          "GT" :
-                                                            return A2(lookup,k,t._4)
-                                                          case
-                                                          "LT" :
-                                                            return A2(lookup,k,t._3)}
-                                                         _E.Case($moduleName,
-                                                                 "between lines 74 and 80");
-                                                       }()}
-                                             _E.Case($moduleName,"between lines 71 and 80");
-                                           }()
-                                  });
-                  var member = F2(function (k,t)
-                                  {
-                                    return Maybe.isJust(A2(lookup,k,t))
-                                  });
-                  var map = F2(function (f,t)
-                               {
-                                 return function ()
-                                        {
-                                          switch (t.ctor)
-                                          {case
-                                           "RBEmpty" :
-                                             switch (t._0.ctor)
-                                             {case
-                                              "LBlack" :
-                                                return RBEmpty(LBlack)}
-                                             break;
-                                           case
-                                           "RBNode" :
-                                             return A5(RBNode,
-                                                       t._0,
-                                                       t._1,
-                                                       f(t._2),
-                                                       A2(map,f,t._3),
-                                                       A2(map,f,t._4))}
-                                          _E.Case($moduleName,"between lines 309 and 314");
-                                        }()
-                               });
+                                              switch (c.ctor)
+                                              {case
+                                               "LBBlack" :
+                                                 return "LBBlack"
+                                               case
+                                               "LBlack" :
+                                                 return "LBlack"}
+                                              _E.Case($moduleName,"between lines 63 and 65");
+                                            }()
+                                   };
+                  var empty = RBEmpty(LBlack);
                   var min = function (t)
                             {
                               return function ()
@@ -3633,12 +3479,222 @@ Elm.Dict.make = function (_elm)
                                                 return {ctor: "_Tuple2", _0: t._1, _1: t._2}}
                                              break;}
                                           return min(t._3)}
-                                       _E.Case($moduleName,"between lines 56 and 59");
+                                       _E.Case($moduleName,"between lines 76 and 79");
                                      }()
                             };
-                  var LBBlack = {ctor: "LBBlack"};
-                  var Insert = {ctor: "Insert"};
+                  var lookup = F2(function (k,t)
+                                  {
+                                    return function ()
+                                           {
+                                             switch (t.ctor)
+                                             {case
+                                              "RBEmpty" :
+                                                switch (t._0.ctor)
+                                                {case
+                                                 "LBlack" :
+                                                   return Maybe.Nothing}
+                                                break;
+                                              case
+                                              "RBNode" :
+                                                return function ()
+                                                       {
+                                                         var _v25 = A2(Native.Utils.compare,k,t._1);
+                                                         switch (_v25.ctor)
+                                                         {case
+                                                          "EQ" :
+                                                            return Maybe.Just(t._2)
+                                                          case
+                                                          "GT" :
+                                                            return A2(lookup,k,t._4)
+                                                          case
+                                                          "LT" :
+                                                            return A2(lookup,k,t._3)}
+                                                         _E.Case($moduleName,
+                                                                 "between lines 94 and 100");
+                                                       }()}
+                                             _E.Case($moduleName,"between lines 91 and 100");
+                                           }()
+                                  });
+                  var member = F2(function (k,t)
+                                  {
+                                    return Maybe.isJust(A2(lookup,k,t))
+                                  });
+                  var findWithDefault = F3(function (base,k,t)
+                                           {
+                                             return function ()
+                                                    {
+                                                      switch (t.ctor)
+                                                      {case
+                                                       "RBEmpty" :
+                                                         switch (t._0.ctor)
+                                                         {case
+                                                          "LBlack" :
+                                                            return base}
+                                                         break;
+                                                       case
+                                                       "RBNode" :
+                                                         return function ()
+                                                                {
+                                                                  var _v33 = A2(Native.Utils.compare,
+                                                                                k,
+                                                                                t._1);
+                                                                  switch (_v33.ctor)
+                                                                  {case
+                                                                   "EQ" :
+                                                                     return t._2
+                                                                   case
+                                                                   "GT" :
+                                                                     return A3(findWithDefault,
+                                                                               base,
+                                                                               k,
+                                                                               t._4)
+                                                                   case
+                                                                   "LT" :
+                                                                     return A3(findWithDefault,
+                                                                               base,
+                                                                               k,
+                                                                               t._3)}
+                                                                  _E.Case($moduleName,
+                                                                          "between lines 106 and 111");
+                                                                }()}
+                                                      _E.Case($moduleName,
+                                                              "between lines 103 and 111");
+                                                    }()
+                                           });
+                  var map = F2(function (f,t)
+                               {
+                                 return function ()
+                                        {
+                                          switch (t.ctor)
+                                          {case
+                                           "RBEmpty" :
+                                             switch (t._0.ctor)
+                                             {case
+                                              "LBlack" :
+                                                return RBEmpty(LBlack)}
+                                             break;
+                                           case
+                                           "RBNode" :
+                                             return A5(RBNode,
+                                                       t._0,
+                                                       t._1,
+                                                       f(t._2),
+                                                       A2(map,f,t._3),
+                                                       A2(map,f,t._4))}
+                                          _E.Case($moduleName,"between lines 303 and 308");
+                                        }()
+                               });
+                  var foldl = F3(function (f,acc,t)
+                                 {
+                                   return function ()
+                                          {
+                                            switch (t.ctor)
+                                            {case
+                                             "RBEmpty" :
+                                               switch (t._0.ctor)
+                                               {case
+                                                "LBlack" :
+                                                  return acc}
+                                               break;
+                                             case
+                                             "RBNode" :
+                                               return A3(foldl,
+                                                         f,
+                                                         A3(f,t._1,t._2,A3(foldl,f,acc,t._3)),
+                                                         t._4)}
+                                            _E.Case($moduleName,"between lines 311 and 316");
+                                          }()
+                                 });
+                  var foldr = F3(function (f,acc,t)
+                                 {
+                                   return function ()
+                                          {
+                                            switch (t.ctor)
+                                            {case
+                                             "RBEmpty" :
+                                               switch (t._0.ctor)
+                                               {case
+                                                "LBlack" :
+                                                  return acc}
+                                               break;
+                                             case
+                                             "RBNode" :
+                                               return A3(foldr,
+                                                         f,
+                                                         A3(f,t._1,t._2,A3(foldr,f,acc,t._4)),
+                                                         t._3)}
+                                            _E.Case($moduleName,"between lines 319 and 324");
+                                          }()
+                                 });
+                  var keys = function (t)
+                             {
+                               return A3(foldr,
+                                         F3(function (k,v,acc)
+                                            {
+                                              return {ctor: "::", _0: k, _1: acc}
+                                            }),
+                                         _J.toList([]),
+                                         t)
+                             };
+                  var values = function (t)
+                               {
+                                 return A3(foldr,
+                                           F3(function (k,v,acc)
+                                              {
+                                                return {ctor: "::", _0: v, _1: acc}
+                                              }),
+                                           _J.toList([]),
+                                           t)
+                               };
+                  var toList = function (t)
+                               {
+                                 return A3(foldr,
+                                           F3(function (k,v,acc)
+                                              {
+                                                return {ctor: "::", _0: {ctor: "_Tuple2", _0: k, _1: v}, _1: acc}
+                                              }),
+                                           _J.toList([]),
+                                           t)
+                               };
+                  var NBlack = {ctor: "NBlack"};
+                  var BBlack = {ctor: "BBlack"};
+                  var isBBlack = function (t)
+                                 {
+                                   return function ()
+                                          {
+                                            switch (t.ctor)
+                                            {case
+                                             "RBEmpty" :
+                                               switch (t._0.ctor)
+                                               {case
+                                                "LBBlack" :
+                                                  return true}
+                                               break;
+                                             case
+                                             "RBNode" :
+                                               switch (t._0.ctor)
+                                               {case
+                                                "BBlack" :
+                                                  return true}
+                                               break;}
+                                            return false
+                                          }()
+                                 };
                   var Black = {ctor: "Black"};
+                  var blackish = function (t)
+                                 {
+                                   return function ()
+                                          {
+                                            switch (t.ctor)
+                                            {case
+                                             "RBEmpty" :
+                                               return true
+                                             case
+                                             "RBNode" :
+                                               return _U.eq(t._0,Black) || _U.eq(t._0,BBlack)}
+                                            _E.Case($moduleName,"between lines 254 and 256");
+                                          }()
+                                 };
                   var blacken = function (t)
                                 {
                                   return function ()
@@ -3650,9 +3706,42 @@ Elm.Dict.make = function (_elm)
                                             case
                                             "RBNode" :
                                               return A5(RBNode,Black,t._1,t._2,t._3,t._4)}
-                                           _E.Case($moduleName,"between lines 296 and 298");
+                                           _E.Case($moduleName,"between lines 290 and 292");
                                          }()
                                 };
+                  var Red = {ctor: "Red"};
+                  var showNColor = function (c)
+                                   {
+                                     return function ()
+                                            {
+                                              switch (c.ctor)
+                                              {case
+                                               "BBlack" :
+                                                 return "BBlack"
+                                               case
+                                               "Black" :
+                                                 return "Black"
+                                               case
+                                               "NBlack" :
+                                                 return "NBlack"
+                                               case
+                                               "Red" :
+                                                 return "Red"}
+                                              _E.Case($moduleName,"between lines 52 and 56");
+                                            }()
+                                   };
+                  var reportRemBug = F4(function (msg,c,lgot,rgot)
+                                        {
+                                          return Native.Error.raise(String.concat(_J.toList(["Internal red-black tree invariant violated, expected ",
+                                                                                             msg,
+                                                                                             "and got",
+                                                                                             showNColor(c),
+                                                                                             " ",
+                                                                                             lgot,
+                                                                                             " ",
+                                                                                             rgot,
+                                                                                             "\nPlease report this bug to https://github.com/evancz/Elm/issues"])))
+                                        });
                   var ensureBlackRoot = function (t)
                                         {
                                           return function ()
@@ -3680,126 +3769,29 @@ Elm.Dict.make = function (_elm)
                                                                    t._3,
                                                                    t._4)}
                                                       break;}
-                                                   _E.Case($moduleName,"between lines 143 and 149");
+                                                   _E.Case($moduleName,"between lines 118 and 124");
                                                  }()
                                         };
-                  var otherColor = function (c)
-                                   {
-                                     return function ()
-                                            {
-                                              switch (c.ctor)
-                                              {case
-                                               "Black" :
-                                                 return Red
-                                               case
-                                               "Red" :
-                                                 return Black}
-                                              _E.Case($moduleName,"on line 122, column 16 to 57");
-                                            }()
-                                   };
-                  var color_flip = function (t)
-                                   {
-                                     return function ()
-                                            {
-                                              switch (t.ctor)
-                                              {case
-                                               "RBNode" :
-                                                 switch (t._3.ctor)
-                                                 {case
-                                                  "RBNode" :
-                                                    switch (t._4.ctor)
-                                                    {case
-                                                     "RBNode" :
-                                                       return A5(RBNode,
-                                                                 otherColor(t._0),
-                                                                 t._1,
-                                                                 t._2,
-                                                                 A5(RBNode,
-                                                                    otherColor(t._3._0),
-                                                                    t._3._1,
-                                                                    t._3._2,
-                                                                    t._3._3,
-                                                                    t._3._4),
-                                                                 A5(RBNode,
-                                                                    otherColor(t._4._0),
-                                                                    t._4._1,
-                                                                    t._4._2,
-                                                                    t._4._3,
-                                                                    t._4._4))}
-                                                    break;}
-                                                 break;}
-                                              return Native.Error.raise("color_flip called on a Empty or Node with a Empty child")
-                                            }()
-                                   };
-                  var color_flipIfNeeded = function (t)
+                  var moreBlack = function (c)
+                                  {
+                                    return function ()
                                            {
-                                             return function ()
-                                                    {
-                                                      switch (t.ctor)
-                                                      {case
-                                                       "RBNode" :
-                                                         switch (t._3.ctor)
-                                                         {case
-                                                          "RBNode" :
-                                                            switch (t._3._0.ctor)
-                                                            {case
-                                                             "Red" :
-                                                               switch (t._4.ctor)
-                                                               {case
-                                                                "RBNode" :
-                                                                  switch (t._4._0.ctor)
-                                                                  {case
-                                                                   "Red" :
-                                                                     return color_flip(t)}
-                                                                  break;}
-                                                               break;}
-                                                            break;}
-                                                         break;}
-                                                      return t
-                                                    }()
-                                           };
-                  var fixUp = function (t)
-                              {
-                                return color_flipIfNeeded(rotateRightIfNeeded(rotateLeftIfNeeded(t)))
-                              };
-                  var BBlack = {ctor: "BBlack"};
-                  var blackish = function (_v156)
-                                 {
-                                   return function ()
-                                          {
-                                            switch (_v156.ctor)
-                                            {case
-                                             "RBNode" :
-                                               return _N.eq(_v156._0,Black) || _N.eq(_v156._0,
-                                                                                     BBlack)}
-                                            _E.Case($moduleName,"on line 260, column 31 to 56");
-                                          }()
-                                 };
-                  var isBBlack = function (t)
-                                 {
-                                   return function ()
-                                          {
-                                            switch (t.ctor)
-                                            {case
-                                             "RBEmpty" :
-                                               switch (t._0.ctor)
-                                               {case
-                                                "LBBlack" :
-                                                  return true}
-                                               break;
-                                             case
-                                             "RBNode" :
-                                               return function ()
-                                                      {
-                                                        switch (t._0.ctor)
-                                                        {case
-                                                         "BBlack" :
-                                                           return true}
-                                                        return false
-                                                      }()}
-                                            return false
-                                          }()
-                                 };
+                                             switch (c.ctor)
+                                             {case
+                                              "BBlack" :
+                                                return Native.Error.raise("Can\'t make a double black node more black!")
+                                              case
+                                              "Black" :
+                                                return BBlack
+                                              case
+                                              "NBlack" :
+                                                return Red
+                                              case
+                                              "Red" :
+                                                return Black}
+                                             _E.Case($moduleName,"between lines 180 and 184");
+                                           }()
+                                  };
                   var lessBlack = function (c)
                                   {
                                     return function ()
@@ -3813,13 +3805,50 @@ Elm.Dict.make = function (_elm)
                                                 return Red
                                               case
                                               "NBlack" :
-                                                return NBlack
+                                                return Native.Error.raise("Can\'t make a negative black node less black!")
                                               case
                                               "Red" :
                                                 return NBlack}
-                                             _E.Case($moduleName,"between lines 211 and 215");
+                                             _E.Case($moduleName,"between lines 187 and 191");
                                            }()
                                   };
+                  var lessBlackTree = function (t)
+                                      {
+                                        return function ()
+                                               {
+                                                 switch (t.ctor)
+                                                 {case
+                                                  "RBEmpty" :
+                                                    switch (t._0.ctor)
+                                                    {case
+                                                     "LBBlack" :
+                                                       return RBEmpty(LBlack)}
+                                                    break;
+                                                  case
+                                                  "RBNode" :
+                                                    return A5(RBNode,
+                                                              lessBlack(t._0),
+                                                              t._1,
+                                                              t._2,
+                                                              t._3,
+                                                              t._4)}
+                                                 _E.Case($moduleName,"between lines 194 and 196");
+                                               }()
+                                      };
+                  var redden = function (t)
+                               {
+                                 return function ()
+                                        {
+                                          switch (t.ctor)
+                                          {case
+                                           "RBEmpty" :
+                                             return Native.Error.raise("can\'t make a Leaf red")
+                                           case
+                                           "RBNode" :
+                                             return A5(RBNode,Red,t._1,t._2,t._3,t._4)}
+                                          _E.Case($moduleName,"between lines 296 and 300");
+                                        }()
+                               };
                   var balance_node = function (t)
                                      {
                                        return function ()
@@ -4023,45 +4052,6 @@ Elm.Dict.make = function (_elm)
                                    {
                                      return balance_node(A5(RBNode,c,k,v,l,r))
                                    });
-                  var lessBlackTree = function (t)
-                                      {
-                                        return function ()
-                                               {
-                                                 switch (t.ctor)
-                                                 {case
-                                                  "RBEmpty" :
-                                                    return RBEmpty(LBlack)
-                                                  case
-                                                  "RBNode" :
-                                                    return A5(RBNode,
-                                                              lessBlack(t._0),
-                                                              t._1,
-                                                              t._2,
-                                                              t._3,
-                                                              t._4)}
-                                                 _E.Case($moduleName,"between lines 223 and 225");
-                                               }()
-                                      };
-                  var moreBlack = function (c)
-                                  {
-                                    return function ()
-                                           {
-                                             switch (c.ctor)
-                                             {case
-                                              "BBlack" :
-                                                return BBlack
-                                              case
-                                              "Black" :
-                                                return BBlack
-                                              case
-                                              "NBlack" :
-                                                return Red
-                                              case
-                                              "Red" :
-                                                return Black}
-                                             _E.Case($moduleName,"between lines 205 and 209");
-                                           }()
-                                  };
                   var bubble = F5(function (c,k,v,l,r)
                                   {
                                     return isBBlack(l) || isBBlack(r) ? A5(balance,
@@ -4076,90 +4066,154 @@ Elm.Dict.make = function (_elm)
                                                                                                   l,
                                                                                                   r)
                                   });
-                  var remove_max = function (t)
-                                   {
-                                     return function ()
-                                            {
-                                              switch (t.ctor)
-                                              {case
-                                               "RBNode" :
-                                                 switch (t._4.ctor)
+                  var remove_max = F5(function (c,k,v,l,r)
+                                      {
+                                        return function ()
+                                               {
+                                                 switch (r.ctor)
                                                  {case
                                                   "RBEmpty" :
-                                                    return rem(t)}
-                                                 return A5(bubble,
-                                                           t._0,
-                                                           t._1,
-                                                           t._2,
-                                                           t._3,
-                                                           remove_max(t._4))}
-                                              _E.Case($moduleName,"between lines 251 and 253");
-                                            }()
-                                   };
-                  var rem = function (t)
-                            {
-                              return function ()
-                                     {
-                                       switch (t.ctor)
-                                       {case
-                                        "RBNode" :
-                                          switch (t._3.ctor)
+                                                    return A3(rem,c,l,r)
+                                                  case
+                                                  "RBNode" :
+                                                    return A5(bubble,
+                                                              c,
+                                                              k,
+                                                              v,
+                                                              l,
+                                                              A5(remove_max,
+                                                                 r._0,
+                                                                 r._1,
+                                                                 r._2,
+                                                                 r._3,
+                                                                 r._4))}
+                                                 _E.Case($moduleName,"between lines 242 and 245");
+                                               }()
+                                      });
+                  var rem = F3(function (c,l,r)
+                               {
+                                 return function ()
+                                        {
+                                          var _v175 = {ctor: "_Tuple2", _0: l, _1: r};
+                                          switch (_v175.ctor)
                                           {case
-                                           "RBEmpty" :
-                                             switch (t._4.ctor)
+                                           "_Tuple2" :
+                                             switch (_v175._0.ctor)
                                              {case
                                               "RBEmpty" :
-                                                return function ()
-                                                       {
-                                                         switch (t._0.ctor)
-                                                         {case
-                                                          "Black" :
-                                                            return RBEmpty(LBBlack)
-                                                          case
-                                                          "Red" :
-                                                            return RBEmpty(LBlack)}
-                                                         _E.Case($moduleName,
-                                                                 "between lines 230 and 233");
-                                                       }()}
-                                             break;}
-                                          switch (t._0.ctor)
-                                          {case
-                                           "Black" :
-                                             switch (t._3.ctor)
-                                             {case
-                                              "RBEmpty" :
-                                                switch (t._4.ctor)
+                                                switch (_v175._1.ctor)
                                                 {case
+                                                 "RBEmpty" :
+                                                   return function ()
+                                                          {
+                                                            switch (c.ctor)
+                                                            {case
+                                                             "Black" :
+                                                               return RBEmpty(LBBlack)
+                                                             case
+                                                             "Red" :
+                                                               return RBEmpty(LBlack)}
+                                                            _E.Case($moduleName,
+                                                                    "between lines 215 and 218");
+                                                          }()
+                                                 case
                                                  "RBNode" :
-                                                   return A5(RBNode,
-                                                             Black,
-                                                             t._4._1,
-                                                             t._4._2,
-                                                             t._4._3,
-                                                             t._4._4)}
+                                                   return function ()
+                                                          {
+                                                            var _v197 = {ctor: "_Tuple3", _0: c, _1: _v175._0._0, _2: _v175._1._0};
+                                                            switch (_v197.ctor)
+                                                            {case
+                                                             "_Tuple3" :
+                                                               switch (_v197._0.ctor)
+                                                               {case
+                                                                "Black" :
+                                                                  switch (_v197._1.ctor)
+                                                                  {case
+                                                                   "LBlack" :
+                                                                     switch (_v197._2.ctor)
+                                                                     {case
+                                                                      "Red" :
+                                                                        return A5(RBNode,
+                                                                                  Black,
+                                                                                  _v175._1._1,
+                                                                                  _v175._1._2,
+                                                                                  _v175._1._3,
+                                                                                  _v175._1._4)}
+                                                                     break;}
+                                                                  break;}
+                                                               break;}
+                                                            return A4(reportRemBug,
+                                                                      "Black, LBlack, Red",
+                                                                      c,
+                                                                      showLColor(_v175._0._0),
+                                                                      showNColor(_v175._1._0))
+                                                          }()}
                                                 break;
                                               case
                                               "RBNode" :
-                                                switch (t._4.ctor)
+                                                switch (_v175._1.ctor)
                                                 {case
                                                  "RBEmpty" :
-                                                   return A5(RBNode,
-                                                             Black,
-                                                             t._3._1,
-                                                             t._3._2,
-                                                             t._3._3,
-                                                             t._3._4)}
+                                                   return function ()
+                                                          {
+                                                            var _v201 = {ctor: "_Tuple3", _0: c, _1: _v175._0._0, _2: _v175._1._0};
+                                                            switch (_v201.ctor)
+                                                            {case
+                                                             "_Tuple3" :
+                                                               switch (_v201._0.ctor)
+                                                               {case
+                                                                "Black" :
+                                                                  switch (_v201._1.ctor)
+                                                                  {case
+                                                                   "Red" :
+                                                                     switch (_v201._2.ctor)
+                                                                     {case
+                                                                      "LBlack" :
+                                                                        return A5(RBNode,
+                                                                                  Black,
+                                                                                  _v175._0._1,
+                                                                                  _v175._0._2,
+                                                                                  _v175._0._3,
+                                                                                  _v175._0._4)}
+                                                                     break;}
+                                                                  break;}
+                                                               break;}
+                                                            return A4(reportRemBug,
+                                                                      "Black, Red, LBlack",
+                                                                      c,
+                                                                      showNColor(_v175._0._0),
+                                                                      showLColor(_v175._1._0))
+                                                          }()
+                                                 case
+                                                 "RBNode" :
+                                                   return function ()
+                                                          {
+                                                            var l$ = A5(remove_max,
+                                                                        _v175._0._0,
+                                                                        _v175._0._1,
+                                                                        _v175._0._2,
+                                                                        _v175._0._3,
+                                                                        _v175._0._4);
+                                                            var r = A5(RBNode,
+                                                                       _v175._1._0,
+                                                                       _v175._1._1,
+                                                                       _v175._1._2,
+                                                                       _v175._1._3,
+                                                                       _v175._1._4);
+                                                            var l = A5(RBNode,
+                                                                       _v175._0._0,
+                                                                       _v175._0._1,
+                                                                       _v175._0._2,
+                                                                       _v175._0._3,
+                                                                       _v175._0._4);
+                                                            var $ = max(l),k = $._0,v = $._1;
+                                                            return A5(bubble,c,k,v,l$,r)
+                                                          }()}
                                                 break;}
                                              break;}
-                                          return function ()
-                                                 {
-                                                   var l$ = remove_max(t._3);
-                                                   var $ = max(t._3),k = $._0,v = $._1;
-                                                   return A5(bubble,t._0,k,v,l$,t._4)
-                                                 }()}
-                                       _E.Case($moduleName,"between lines 229 and 241");
-                                     }()
-                            };
+                                          _E.Case($moduleName,"between lines 214 and 232");
+                                        }()
+                               });
                   var update = F3(function (k,u,t)
                                   {
                                     return function ()
@@ -4176,50 +4230,53 @@ Elm.Dict.make = function (_elm)
                                                                      "LBlack" :
                                                                        return function ()
                                                                               {
-                                                                                var _v283 = u(Maybe.Nothing);
-                                                                                switch (_v283.ctor)
+                                                                                var _v212 = u(Maybe.Nothing);
+                                                                                switch (_v212.ctor)
                                                                                 {case
                                                                                  "Just" :
                                                                                    return {ctor: "_Tuple2", _0: Insert, _1: A5(RBNode,
                                                                                                                                Red,
                                                                                                                                k,
-                                                                                                                               _v283._0,
+                                                                                                                               _v212._0,
                                                                                                                                empty,
                                                                                                                                empty)}
                                                                                  case
                                                                                  "Nothing" :
                                                                                    return {ctor: "_Tuple2", _0: Same, _1: empty}}
                                                                                 _E.Case($moduleName,
-                                                                                        "between lines 166 and 169");
+                                                                                        "between lines 146 and 149");
                                                                               }()}
                                                                     break;
                                                                   case
                                                                   "RBNode" :
                                                                     return function ()
                                                                            {
-                                                                             var _v285 = A2(Native.Utils.compare,
+                                                                             var _v214 = A2(Native.Utils.compare,
                                                                                             k,
                                                                                             t._1);
-                                                                             switch (_v285.ctor)
+                                                                             switch (_v214.ctor)
                                                                              {case
                                                                               "EQ" :
                                                                                 return function ()
                                                                                        {
-                                                                                         var _v286 = u(Maybe.Just(t._2));
-                                                                                         switch (_v286.ctor)
+                                                                                         var _v215 = u(Maybe.Just(t._2));
+                                                                                         switch (_v215.ctor)
                                                                                          {case
                                                                                           "Just" :
                                                                                             return {ctor: "_Tuple2", _0: Same, _1: A5(RBNode,
                                                                                                                                       t._0,
                                                                                                                                       t._1,
-                                                                                                                                      _v286._0,
+                                                                                                                                      _v215._0,
                                                                                                                                       t._3,
                                                                                                                                       t._4)}
                                                                                           case
                                                                                           "Nothing" :
-                                                                                            return {ctor: "_Tuple2", _0: Remove, _1: rem(t)}}
+                                                                                            return {ctor: "_Tuple2", _0: Remove, _1: A3(rem,
+                                                                                                                                        t._0,
+                                                                                                                                        t._3,
+                                                                                                                                        t._4)}}
                                                                                          _E.Case($moduleName,
-                                                                                                 "between lines 170 and 173");
+                                                                                                 "between lines 150 and 153");
                                                                                        }()
                                                                               case
                                                                               "GT" :
@@ -4233,12 +4290,12 @@ Elm.Dict.make = function (_elm)
                                                                                                   switch (fl.ctor)
                                                                                                   {case
                                                                                                    "Insert" :
-                                                                                                     return {ctor: "_Tuple2", _0: Insert, _1: fixUp(A5(RBNode,
-                                                                                                                                                       t._0,
-                                                                                                                                                       t._1,
-                                                                                                                                                       t._2,
-                                                                                                                                                       t._3,
-                                                                                                                                                       r$))}
+                                                                                                     return {ctor: "_Tuple2", _0: Insert, _1: A5(balance,
+                                                                                                                                                 t._0,
+                                                                                                                                                 t._1,
+                                                                                                                                                 t._2,
+                                                                                                                                                 t._3,
+                                                                                                                                                 r$)}
                                                                                                    case
                                                                                                    "Remove" :
                                                                                                      return {ctor: "_Tuple2", _0: Remove, _1: A5(bubble,
@@ -4256,7 +4313,7 @@ Elm.Dict.make = function (_elm)
                                                                                                                                                t._3,
                                                                                                                                                r$)}}
                                                                                                   _E.Case($moduleName,
-                                                                                                          "between lines 179 and 183");
+                                                                                                          "between lines 159 and 163");
                                                                                                 }()
                                                                                        }()
                                                                               case
@@ -4271,12 +4328,12 @@ Elm.Dict.make = function (_elm)
                                                                                                   switch (fl.ctor)
                                                                                                   {case
                                                                                                    "Insert" :
-                                                                                                     return {ctor: "_Tuple2", _0: Insert, _1: fixUp(A5(RBNode,
-                                                                                                                                                       t._0,
-                                                                                                                                                       t._1,
-                                                                                                                                                       t._2,
-                                                                                                                                                       l$,
-                                                                                                                                                       t._4))}
+                                                                                                     return {ctor: "_Tuple2", _0: Insert, _1: A5(balance,
+                                                                                                                                                 t._0,
+                                                                                                                                                 t._1,
+                                                                                                                                                 t._2,
+                                                                                                                                                 l$,
+                                                                                                                                                 t._4)}
                                                                                                    case
                                                                                                    "Remove" :
                                                                                                      return {ctor: "_Tuple2", _0: Remove, _1: A5(bubble,
@@ -4294,14 +4351,14 @@ Elm.Dict.make = function (_elm)
                                                                                                                                                l$,
                                                                                                                                                t._4)}}
                                                                                                   _E.Case($moduleName,
-                                                                                                          "between lines 174 and 178");
+                                                                                                          "between lines 154 and 158");
                                                                                                 }()
                                                                                        }()}
                                                                              _E.Case($moduleName,
-                                                                                     "between lines 169 and 183");
+                                                                                     "between lines 149 and 163");
                                                                            }()}
                                                                  _E.Case($moduleName,
-                                                                         "between lines 165 and 183");
+                                                                         "between lines 145 and 163");
                                                                }()
                                                       };
                                              var $ = up(t),fl = $._0,t$ = $._1;
@@ -4318,7 +4375,7 @@ Elm.Dict.make = function (_elm)
                                                        "Same" :
                                                          return t$}
                                                       _E.Case($moduleName,
-                                                              "between lines 184 and 189");
+                                                              "between lines 164 and 169");
                                                     }()
                                            }()
                                   });
@@ -4326,7 +4383,7 @@ Elm.Dict.make = function (_elm)
                                   {
                                     return function ()
                                            {
-                                             var u = function (_v291)
+                                             var u = function (_v220)
                                                      {
                                                        return function ()
                                                               {
@@ -4336,24 +4393,14 @@ Elm.Dict.make = function (_elm)
                                              return A3(update,k,u,t)
                                            }()
                                   });
-                  var fromList = function (assocs)
+                  var singleton = F2(function (k,v)
+                                     {
+                                       return A3(insert,k,v,RBEmpty(LBlack))
+                                     });
+                  var union = F2(function (t1,t2)
                                  {
-                                   return A3(List.foldl,
-                                             F2(function (_v293,d)
-                                                {
-                                                  return function ()
-                                                         {
-                                                           switch (_v293.ctor)
-                                                           {case
-                                                            "_Tuple2" :
-                                                              return A3(insert,_v293._0,_v293._1,d)}
-                                                           _E.Case($moduleName,
-                                                                   "on line 360, column 43 to 55");
-                                                         }()
-                                                }),
-                                             empty,
-                                             assocs)
-                                 };
+                                   return A3(foldl,insert,t2,t1)
+                                 });
                   var intersect = F2(function (t1,t2)
                                      {
                                        return function ()
@@ -4370,19 +4417,29 @@ Elm.Dict.make = function (_elm)
                                                 return A3(foldl,combine,empty,t1)
                                               }()
                                      });
-                  var singleton = F2(function (k,v)
-                                     {
-                                       return A3(insert,k,v,RBEmpty(LBlack))
-                                     });
-                  var union = F2(function (t1,t2)
+                  var fromList = function (assocs)
                                  {
-                                   return A3(foldl,insert,t2,t1)
-                                 });
+                                   return A3(List.foldl,
+                                             F2(function (_v222,d)
+                                                {
+                                                  return function ()
+                                                         {
+                                                           switch (_v222.ctor)
+                                                           {case
+                                                            "_Tuple2" :
+                                                              return A3(insert,_v222._0,_v222._1,d)}
+                                                           _E.Case($moduleName,
+                                                                   "on line 354, column 43 to 55");
+                                                         }()
+                                                }),
+                                             empty,
+                                             assocs)
+                                 };
                   var remove = F2(function (k,t)
                                   {
                                     return function ()
                                            {
-                                             var u = function (_v297)
+                                             var u = function (_v226)
                                                      {
                                                        return function ()
                                                               {
@@ -4402,25 +4459,6 @@ Elm.Dict.make = function (_elm)
                                             t1,
                                             t2)
                                 });
-                  var moreBlackTree = function (t)
-                                      {
-                                        return function ()
-                                               {
-                                                 switch (t.ctor)
-                                                 {case
-                                                  "RBEmpty" :
-                                                    return RBEmpty(LBBlack)
-                                                  case
-                                                  "RBNode" :
-                                                    return A5(RBNode,
-                                                              moreBlack(t._0),
-                                                              t._1,
-                                                              t._2,
-                                                              t._3,
-                                                              t._4)}
-                                                 _E.Case($moduleName,"between lines 218 and 220");
-                                               }()
-                                      };
                   _elm.Dict.values = {_op: _op, empty: empty, singleton: singleton, insert: insert, update: update, lookup: lookup, findWithDefault: findWithDefault, remove: remove, member: member, foldl: foldl, foldr: foldr, map: map, union: union, intersect: intersect, diff: diff, keys: keys, values: values, toList: toList, fromList: fromList};
                   return _elm.Dict.values
                 };Elm.Either = Elm.Either || {};
@@ -4429,11 +4467,11 @@ Elm.Either.make = function (_elm)
                     _elm.Either = _elm.Either || {};
                     if (_elm.Either.values)
                     return _elm.Either.values
-                    var N = Elm.Native,
-                        _N = N.Utils.make(_elm),
-                        _L = N.List.make(_elm),
-                        _E = N.Error.make(_elm),
-                        _J = N.JavaScript.make(_elm),
+                    var _N = Elm.Native,
+                        _U = _N.Utils.make(_elm),
+                        _L = _N.List.make(_elm),
+                        _E = _N.Error.make(_elm),
+                        _J = _N.JavaScript.make(_elm),
                         $moduleName = "Either";
                     var List = Elm.List.make(_elm);
                     var _op = {};
@@ -4456,35 +4494,31 @@ Elm.Either.make = function (_elm)
                                {
                                  return {ctor: "Left", _0: a}
                                };
-                    var consEither = F2(function (e,_v2)
-                                        {
-                                          return function ()
-                                                 {
-                                                   switch (_v2.ctor)
-                                                   {case
-                                                    "_Tuple2" :
-                                                      return function ()
-                                                             {
-                                                               switch (e.ctor)
-                                                               {case
-                                                                "Left" :
-                                                                  return {ctor: "_Tuple2", _0: {ctor: "::", _0: e._0, _1: _v2._0}, _1: _v2._1}
-                                                                case
-                                                                "Right" :
-                                                                  return {ctor: "_Tuple2", _0: _v2._0, _1: {ctor: "::", _0: e._0, _1: _v2._1}}}
-                                                               _E.Case($moduleName,
-                                                                       "between lines 66 and 68");
-                                                             }()}
-                                                   _E.Case($moduleName,"between lines 66 and 68");
-                                                 }()
-                                        });
-                    var partition = function (es)
+                    var either = F3(function (f,g,e)
                                     {
-                                      return A3(List.foldr,
-                                                consEither,
-                                                {ctor: "_Tuple2", _0: _J.toList([]), _1: _J.toList([])},
-                                                es)
-                                    };
+                                      return function ()
+                                             {
+                                               switch (e.ctor)
+                                               {case
+                                                "Left" :
+                                                  return f(e._0)
+                                                case
+                                                "Right" :
+                                                  return g(e._0)}
+                                               _E.Case($moduleName,"on line 31, column 16 to 60");
+                                             }()
+                                    });
+                    var isLeft = function (e)
+                                 {
+                                   return function ()
+                                          {
+                                            switch (e.ctor)
+                                            {case
+                                             "Left" :
+                                               return true}
+                                            return false
+                                          }()
+                                 };
                     var consLeft = F2(function (e,vs)
                                       {
                                         return function ()
@@ -4521,31 +4555,35 @@ Elm.Either.make = function (_elm)
                                  {
                                    return A3(List.foldr,consRight,_J.toList([]),es)
                                  };
-                    var either = F3(function (f,g,e)
+                    var consEither = F2(function (e,_v13)
+                                        {
+                                          return function ()
+                                                 {
+                                                   switch (_v13.ctor)
+                                                   {case
+                                                    "_Tuple2" :
+                                                      return function ()
+                                                             {
+                                                               switch (e.ctor)
+                                                               {case
+                                                                "Left" :
+                                                                  return {ctor: "_Tuple2", _0: {ctor: "::", _0: e._0, _1: _v13._0}, _1: _v13._1}
+                                                                case
+                                                                "Right" :
+                                                                  return {ctor: "_Tuple2", _0: _v13._0, _1: {ctor: "::", _0: e._0, _1: _v13._1}}}
+                                                               _E.Case($moduleName,
+                                                                       "between lines 66 and 68");
+                                                             }()}
+                                                   _E.Case($moduleName,"between lines 66 and 68");
+                                                 }()
+                                        });
+                    var partition = function (es)
                                     {
-                                      return function ()
-                                             {
-                                               switch (e.ctor)
-                                               {case
-                                                "Left" :
-                                                  return f(e._0)
-                                                case
-                                                "Right" :
-                                                  return g(e._0)}
-                                               _E.Case($moduleName,"on line 31, column 16 to 60");
-                                             }()
-                                    });
-                    var isLeft = function (e)
-                                 {
-                                   return function ()
-                                          {
-                                            switch (e.ctor)
-                                            {case
-                                             "Left" :
-                                               return true}
-                                            return false
-                                          }()
-                                 };
+                                      return A3(List.foldr,
+                                                consEither,
+                                                {ctor: "_Tuple2", _0: _J.toList([]), _1: _J.toList([])},
+                                                es)
+                                    };
                     _elm.Either.values = {_op: _op, either: either, isLeft: isLeft, isRight: isRight, lefts: lefts, rights: rights, partition: partition, consLeft: consLeft, consRight: consRight, consEither: consEither, Left: Left, Right: Right};
                     return _elm.Either.values
                   };Elm.Http = Elm.Http || {};
@@ -4554,26 +4592,22 @@ Elm.Http.make = function (_elm)
                   _elm.Http = _elm.Http || {};
                   if (_elm.Http.values)
                   return _elm.Http.values
-                  var N = Elm.Native,
-                      _N = N.Utils.make(_elm),
-                      _L = N.List.make(_elm),
-                      _E = N.Error.make(_elm),
-                      _J = N.JavaScript.make(_elm),
+                  var _N = Elm.Native,
+                      _U = _N.Utils.make(_elm),
+                      _L = _N.List.make(_elm),
+                      _E = _N.Error.make(_elm),
+                      _J = _N.JavaScript.make(_elm),
                       $moduleName = "Http";
-                  var Signal = Elm.Signal.make(_elm);
                   var Native = Native || {};
                   Native.Http = Elm.Native.Http.make(_elm);
+                  var Signal = Elm.Signal.make(_elm);
                   var _op = {};
                   var send = Native.Http.send;
-                  var Waiting = {ctor: "Waiting"};
-                  var Success = function (a)
-                                {
-                                  return {ctor: "Success", _0: a}
-                                };
                   var Request = F4(function (a,b,c,d)
                                    {
                                      return {_: {}, body: c, headers: d, url: b, verb: a}
                                    });
+                  var request = Request;
                   var get = function (url)
                             {
                               return A4(Request,"GET",url,"",_J.toList([]))
@@ -4586,11 +4620,15 @@ Elm.Http.make = function (_elm)
                                 {
                                   return A4(Request,"POST",url,body,_J.toList([]))
                                 });
-                  var request = Request;
                   var Failure = F2(function (a,b)
                                    {
                                      return {ctor: "Failure", _0: a, _1: b}
                                    });
+                  var Waiting = {ctor: "Waiting"};
+                  var Success = function (a)
+                                {
+                                  return {ctor: "Success", _0: a}
+                                };
                   _elm.Http.values = {_op: _op, request: request, get: get, post: post, send: send, sendGet: sendGet, Success: Success, Waiting: Waiting, Failure: Failure, Request: Request};
                   return _elm.Http.values
                 };Elm.JavaScript = Elm.JavaScript || {};
@@ -4599,34 +4637,34 @@ Elm.JavaScript.make = function (_elm)
                         _elm.JavaScript = _elm.JavaScript || {};
                         if (_elm.JavaScript.values)
                         return _elm.JavaScript.values
-                        var N = Elm.Native,
-                            _N = N.Utils.make(_elm),
-                            _L = N.List.make(_elm),
-                            _E = N.Error.make(_elm),
-                            _J = N.JavaScript.make(_elm),
+                        var _N = Elm.Native,
+                            _U = _N.Utils.make(_elm),
+                            _L = _N.List.make(_elm),
+                            _E = _N.Error.make(_elm),
+                            _J = _N.JavaScript.make(_elm),
                             $moduleName = "JavaScript";
                         var Native = Native || {};
                         Native.JavaScript = Elm.Native.JavaScript.make(_elm);
                         var _op = {};
-                        var toString = Native.JavaScript.toString;
-                        var toList = Native.JavaScript.toList;
-                        var toInt = Native.JavaScript.toInt;
-                        var toFloat = Native.JavaScript.toFloat;
-                        var toBool = Native.JavaScript.toBool;
                         var fromString = Native.JavaScript.fromString;
-                        var fromList = Native.JavaScript.fromList;
-                        var fromInt = Native.JavaScript.fromInt;
-                        var fromFloat = Native.JavaScript.fromFloat;
                         var fromBool = Native.JavaScript.fromBool;
-                        var JSString = {ctor: "JSString"};
+                        var fromFloat = Native.JavaScript.fromFloat;
+                        var fromInt = Native.JavaScript.fromInt;
+                        var fromList = Native.JavaScript.fromList;
+                        var toString = Native.JavaScript.toString;
+                        var toBool = Native.JavaScript.toBool;
+                        var toFloat = Native.JavaScript.toFloat;
+                        var toInt = Native.JavaScript.toInt;
+                        var toList = Native.JavaScript.toList;
                         var JSObject = {ctor: "JSObject"};
-                        var JSNumber = {ctor: "JSNumber"};
                         var JSDomNode = {ctor: "JSDomNode"};
-                        var JSBool = {ctor: "JSBool"};
                         var JSArray = function (a)
                                       {
                                         return {ctor: "JSArray", _0: a}
                                       };
+                        var JSString = {ctor: "JSString"};
+                        var JSBool = {ctor: "JSBool"};
+                        var JSNumber = {ctor: "JSNumber"};
                         _elm.JavaScript.values = {_op: _op, toList: toList, toInt: toInt, toFloat: toFloat, toBool: toBool, toString: toString, fromList: fromList, fromInt: fromInt, fromFloat: fromFloat, fromBool: fromBool, fromString: fromString, JSNumber: JSNumber, JSBool: JSBool, JSString: JSString, JSArray: JSArray, JSDomNode: JSDomNode, JSObject: JSObject};
                         return _elm.JavaScript.values
                       };Elm.Json = Elm.Json || {};
@@ -4635,53 +4673,52 @@ Elm.Json.make = function (_elm)
                   _elm.Json = _elm.Json || {};
                   if (_elm.Json.values)
                   return _elm.Json.values
-                  var N = Elm.Native,
-                      _N = N.Utils.make(_elm),
-                      _L = N.List.make(_elm),
-                      _E = N.Error.make(_elm),
-                      _J = N.JavaScript.make(_elm),
+                  var _N = Elm.Native,
+                      _U = _N.Utils.make(_elm),
+                      _L = _N.List.make(_elm),
+                      _E = _N.Error.make(_elm),
+                      _J = _N.JavaScript.make(_elm),
                       $moduleName = "Json";
                   var Basics = Elm.Basics.make(_elm);
                   var Dict = Elm.Dict.make(_elm);
-                  var Maybe = Elm.Maybe.make(_elm);
                   var JavaScript = Elm.JavaScript.make(_elm);
+                  var Maybe = Elm.Maybe.make(_elm);
                   var Native = Native || {};
                   Native.Json = Elm.Native.Json.make(_elm);
-                  var JavaScript = Elm.JavaScript.make(_elm);
                   var _op = {};
-                  var toString = F2(function (sep,v)
-                                    {
-                                      return JavaScript.toString(A2(Native.Json.toJSString,sep,v))
-                                    });
-                  var toJSString = Native.Json.toJSString;
                   var toJSObject = Native.Json.toJSObject;
+                  var fromJSObject = Native.Json.fromJSObject;
+                  var fromJSString = Native.Json.fromJSString;
                   var fromString = function (s)
                                    {
                                      return Native.Json.fromJSString(JavaScript.fromString(s))
                                    };
-                  var fromJSString = Native.Json.fromJSString;
-                  var fromJSObject = Native.Json.fromJSObject;
-                  var String = function (a)
-                               {
-                                 return {ctor: "String", _0: a}
-                               };
+                  var toJSString = Native.Json.toJSString;
+                  var toString = F2(function (sep,v)
+                                    {
+                                      return JavaScript.toString(A2(Native.Json.toJSString,sep,v))
+                                    });
                   var Object = function (a)
                                {
                                  return {ctor: "Object", _0: a}
                                };
-                  var Number = function (a)
-                               {
-                                 return {ctor: "Number", _0: a}
-                               };
+                  var Array = function (a)
+                              {
+                                return {ctor: "Array", _0: a}
+                              };
                   var Null = {ctor: "Null"};
                   var Boolean = function (a)
                                 {
                                   return {ctor: "Boolean", _0: a}
                                 };
-                  var Array = function (a)
-                              {
-                                return {ctor: "Array", _0: a}
-                              };
+                  var Number = function (a)
+                               {
+                                 return {ctor: "Number", _0: a}
+                               };
+                  var String = function (a)
+                               {
+                                 return {ctor: "String", _0: a}
+                               };
                   _elm.Json.values = {_op: _op, toString: toString, toJSString: toJSString, fromString: fromString, fromJSString: fromJSString, fromJSObject: fromJSObject, toJSObject: toJSObject, String: String, Number: Number, Boolean: Boolean, Null: Null, Array: Array, Object: Object};
                   return _elm.Json.values
                 };Elm.Keyboard = Elm.Keyboard || {};
@@ -4690,26 +4727,26 @@ Elm.Keyboard.make = function (_elm)
                       _elm.Keyboard = _elm.Keyboard || {};
                       if (_elm.Keyboard.values)
                       return _elm.Keyboard.values
-                      var N = Elm.Native,
-                          _N = N.Utils.make(_elm),
-                          _L = N.List.make(_elm),
-                          _E = N.Error.make(_elm),
-                          _J = N.JavaScript.make(_elm),
+                      var _N = Elm.Native,
+                          _U = _N.Utils.make(_elm),
+                          _L = _N.List.make(_elm),
+                          _E = _N.Error.make(_elm),
+                          _J = _N.JavaScript.make(_elm),
                           $moduleName = "Keyboard";
-                      var Signal = Elm.Signal.make(_elm);
                       var Native = Native || {};
                       Native.Keyboard = Elm.Native.Keyboard.make(_elm);
+                      var Signal = Elm.Signal.make(_elm);
                       var _op = {};
                       var lastPressed = Native.Keyboard.lastPressed;
                       var keysDown = Native.Keyboard.keysDown;
                       var isDown = Native.Keyboard.isDown;
                       var shift = isDown(16);
+                      var ctrl = isDown(17);
                       var space = isDown(32);
                       var enter = isDown(13);
                       var directions = Native.Keyboard.directions;
-                      var wasd = A4(directions,87,83,65,68);
-                      var ctrl = isDown(17);
                       var arrows = A4(directions,38,40,37,39);
+                      var wasd = A4(directions,87,83,65,68);
                       _elm.Keyboard.values = {_op: _op, directions: directions, arrows: arrows, wasd: wasd, isDown: isDown, shift: shift, ctrl: ctrl, space: space, enter: enter, keysDown: keysDown, lastPressed: lastPressed};
                       return _elm.Keyboard.values
                     };Elm.List = Elm.List || {};
@@ -4718,31 +4755,68 @@ Elm.List.make = function (_elm)
                   _elm.List = _elm.List || {};
                   if (_elm.List.values)
                   return _elm.List.values
-                  var N = Elm.Native,
-                      _N = N.Utils.make(_elm),
-                      _L = N.List.make(_elm),
-                      _E = N.Error.make(_elm),
-                      _J = N.JavaScript.make(_elm),
+                  var _N = Elm.Native,
+                      _U = _N.Utils.make(_elm),
+                      _L = _N.List.make(_elm),
+                      _E = _N.Error.make(_elm),
+                      _J = _N.JavaScript.make(_elm),
                       $moduleName = "List";
                   var Basics = Elm.Basics.make(_elm);
                   var Native = Native || {};
                   Native.List = Elm.Native.List.make(_elm);
                   var _op = {};
-                  var zipWith = Native.List.zipWith;
-                  var zip = Native.List.zip;
-                  var take = Native.List.take;
-                  var tail = Native.List.tail;
                   var sortWith = Native.List.sortWith;
                   var sortBy = Native.List.sortBy;
                   var sort = Native.List.sort;
+                  var repeat = Native.List.repeat;
+                  var drop = Native.List.drop;
+                  var take = Native.List.take;
+                  var join = Native.List.join;
+                  var zipWith = Native.List.zipWith;
+                  var zip = Native.List.zip;
+                  var concat = Native.List.concat;
+                  var any = Native.List.any;
+                  var all = Native.List.all;
+                  var reverse = Native.List.reverse;
+                  var length = Native.List.length;
+                  var filter = Native.List.filter;
                   var scanl1 = Native.List.scanl1;
                   var scanl = Native.List.scanl;
-                  var reverse = Native.List.reverse;
-                  var repeat = Native.List.repeat;
+                  var foldr1 = Native.List.foldr1;
+                  var foldl1 = Native.List.foldl1;
+                  var maximum = foldl1(Basics.max);
+                  var minimum = foldl1(Basics.min);
+                  var foldr = Native.List.foldr;
+                  var foldl = Native.List.foldl;
+                  var and = A2(foldl,
+                               F2(function (x,y)
+                                  {
+                                    return x && y
+                                  }),
+                               true);
+                  var or = A2(foldl,
+                              F2(function (x,y)
+                                 {
+                                   return x || y
+                                 }),
+                              false);
+                  var sum = A2(foldl,
+                               F2(function (x,y)
+                                  {
+                                    return x + y
+                                  }),
+                               0);
+                  var product = A2(foldl,
+                                   F2(function (x,y)
+                                      {
+                                        return x * y
+                                      }),
+                                   1);
                   var map = Native.List.map;
-                  var length = Native.List.length;
-                  var last = Native.List.last;
-                  var join = Native.List.join;
+                  var concatMap = F2(function (f,list)
+                                     {
+                                       return concat(A2(map,f,list))
+                                     });
                   var isEmpty = function (xs)
                                 {
                                   return function ()
@@ -4754,70 +4828,11 @@ Elm.List.make = function (_elm)
                                            return false
                                          }()
                                 };
+                  var last = Native.List.last;
+                  var tail = Native.List.tail;
                   var head = Native.List.head;
-                  var foldr1 = Native.List.foldr1;
-                  var foldr = Native.List.foldr;
-                  var foldl1 = Native.List.foldl1;
-                  var maximum = foldl1(Basics.max);
-                  var minimum = foldl1(Basics.min);
-                  var foldl = Native.List.foldl;
-                  var or = A2(foldl,
-                              F2(function (x,y)
-                                 {
-                                   return x || y
-                                 }),
-                              false);
-                  var product = A2(foldl,
-                                   F2(function (x,y)
-                                      {
-                                        return x * y
-                                      }),
-                                   1);
-                  var sum = A2(foldl,
-                               F2(function (x,y)
-                                  {
-                                    return x + y
-                                  }),
-                               0);
-                  var filter = Native.List.filter;
-                  var drop = Native.List.drop;
-                  var concat = Native.List.concat;
-                  var concatMap = F2(function (f,list)
-                                     {
-                                       return concat(A2(map,f,list))
-                                     });
-                  var any = Native.List.any;
-                  var and = A2(foldl,
-                               F2(function (x,y)
-                                  {
-                                    return x && y
-                                  }),
-                               true);
-                  var all = Native.List.all;
+                  _op["++"] = Native.List.append;
                   _op["::"] = Native.List.cons;
-                  var intersperse = F2(function (sep,xs)
-                                       {
-                                         return function ()
-                                                {
-                                                  switch (xs.ctor)
-                                                  {case
-                                                   "::" :
-                                                     switch (xs._1.ctor)
-                                                     {case
-                                                      "::" :
-                                                        return {ctor: "::", _0: xs._0, _1: {ctor: "::", _0: sep, _1: A2(intersperse,
-                                                                                                                        sep,
-                                                                                                                        {ctor: "::", _0: xs._1._0, _1: xs._1._1})}}
-                                                      case
-                                                      "[]" :
-                                                        return _J.toList([xs._0])}
-                                                     break;
-                                                   case
-                                                   "[]" :
-                                                     return _J.toList([])}
-                                                  _E.Case($moduleName,"between lines 212 and 217");
-                                                }()
-                                       });
                   var partition = F2(function (pred,lst)
                                      {
                                        return function ()
@@ -4860,7 +4875,29 @@ Elm.List.make = function (_elm)
                                          _E.Case($moduleName,"between lines 194 and 202");
                                        }()
                               };
-                  _op["++"] = Native.List.append;
+                  var intersperse = F2(function (sep,xs)
+                                       {
+                                         return function ()
+                                                {
+                                                  switch (xs.ctor)
+                                                  {case
+                                                   "::" :
+                                                     switch (xs._1.ctor)
+                                                     {case
+                                                      "::" :
+                                                        return {ctor: "::", _0: xs._0, _1: {ctor: "::", _0: sep, _1: A2(intersperse,
+                                                                                                                        sep,
+                                                                                                                        {ctor: "::", _0: xs._1._0, _1: xs._1._1})}}
+                                                      case
+                                                      "[]" :
+                                                        return _J.toList([xs._0])}
+                                                     break;
+                                                   case
+                                                   "[]" :
+                                                     return _J.toList([])}
+                                                  _E.Case($moduleName,"between lines 212 and 217");
+                                                }()
+                                       });
                   _elm.List.values = {_op: _op, head: head, tail: tail, last: last, isEmpty: isEmpty, map: map, foldl: foldl, foldr: foldr, foldl1: foldl1, foldr1: foldr1, scanl: scanl, scanl1: scanl1, filter: filter, length: length, reverse: reverse, all: all, any: any, and: and, or: or, concat: concat, concatMap: concatMap, sum: sum, product: product, maximum: maximum, minimum: minimum, partition: partition, zip: zip, zipWith: zipWith, unzip: unzip, join: join, intersperse: intersperse, take: take, drop: drop, repeat: repeat, sort: sort, sortBy: sortBy, sortWith: sortWith};
                   return _elm.List.values
                 };Elm.Maybe = Elm.Maybe || {};
@@ -4869,11 +4906,11 @@ Elm.Maybe.make = function (_elm)
                    _elm.Maybe = _elm.Maybe || {};
                    if (_elm.Maybe.values)
                    return _elm.Maybe.values
-                   var N = Elm.Native,
-                       _N = N.Utils.make(_elm),
-                       _L = N.List.make(_elm),
-                       _E = N.Error.make(_elm),
-                       _J = N.JavaScript.make(_elm),
+                   var _N = Elm.Native,
+                       _U = _N.Utils.make(_elm),
+                       _L = _N.List.make(_elm),
+                       _E = _N.Error.make(_elm),
+                       _J = _N.JavaScript.make(_elm),
                        $moduleName = "Maybe";
                    var Basics = Elm.Basics.make(_elm);
                    var List = Elm.List.make(_elm);
@@ -4897,17 +4934,6 @@ Elm.Maybe.make = function (_elm)
                                              _E.Case($moduleName,"between lines 28 and 33");
                                            }()
                                   });
-                   var cons = F2(function (mx,xs)
-                                 {
-                                   return A3(maybe,
-                                             xs,
-                                             function (x)
-                                             {
-                                               return {ctor: "::", _0: x, _1: xs}
-                                             },
-                                             mx)
-                                 });
-                   var justs = A2(List.foldr,cons,_J.toList([]));
                    var isJust = A2(maybe,
                                    false,
                                    function (_v2)
@@ -4921,6 +4947,17 @@ Elm.Maybe.make = function (_elm)
                                    {
                                      return Basics.not(isJust($))
                                    };
+                   var cons = F2(function (mx,xs)
+                                 {
+                                   return A3(maybe,
+                                             xs,
+                                             function (x)
+                                             {
+                                               return {ctor: "::", _0: x, _1: xs}
+                                             },
+                                             mx)
+                                 });
+                   var justs = A2(List.foldr,cons,_J.toList([]));
                    _elm.Maybe.values = {_op: _op, maybe: maybe, isJust: isJust, isNothing: isNothing, cons: cons, justs: justs, Just: Just, Nothing: Nothing};
                    return _elm.Maybe.values
                  };Elm.Mouse = Elm.Mouse || {};
@@ -4929,22 +4966,22 @@ Elm.Mouse.make = function (_elm)
                    _elm.Mouse = _elm.Mouse || {};
                    if (_elm.Mouse.values)
                    return _elm.Mouse.values
-                   var N = Elm.Native,
-                       _N = N.Utils.make(_elm),
-                       _L = N.List.make(_elm),
-                       _E = N.Error.make(_elm),
-                       _J = N.JavaScript.make(_elm),
+                   var _N = Elm.Native,
+                       _U = _N.Utils.make(_elm),
+                       _L = _N.List.make(_elm),
+                       _E = _N.Error.make(_elm),
+                       _J = _N.JavaScript.make(_elm),
                        $moduleName = "Mouse";
-                   var Signal = Elm.Signal.make(_elm);
                    var Native = Native || {};
                    Native.Mouse = Elm.Native.Mouse.make(_elm);
+                   var Signal = Elm.Signal.make(_elm);
                    var _op = {};
+                   var clicks = Native.Mouse.clicks;
+                   var isClicked = Native.Mouse.isClicked;
+                   var isDown = Native.Mouse.isDown;
                    var y = Native.Mouse.y;
                    var x = Native.Mouse.x;
                    var position = Native.Mouse.position;
-                   var isDown = Native.Mouse.isDown;
-                   var isClicked = Native.Mouse.isClicked;
-                   var clicks = Native.Mouse.clicks;
                    _elm.Mouse.values = {_op: _op, position: position, x: x, y: y, isDown: isDown, isClicked: isClicked, clicks: clicks};
                    return _elm.Mouse.values
                  };Elm.Prelude = Elm.Prelude || {};
@@ -4953,11 +4990,11 @@ Elm.Prelude.make = function (_elm)
                      _elm.Prelude = _elm.Prelude || {};
                      if (_elm.Prelude.values)
                      return _elm.Prelude.values
-                     var N = Elm.Native,
-                         _N = N.Utils.make(_elm),
-                         _L = N.List.make(_elm),
-                         _E = N.Error.make(_elm),
-                         _J = N.JavaScript.make(_elm),
+                     var _N = Elm.Native,
+                         _U = _N.Utils.make(_elm),
+                         _L = _N.List.make(_elm),
+                         _E = _N.Error.make(_elm),
+                         _J = _N.JavaScript.make(_elm),
                          $moduleName = "Prelude";
                      var Native = Native || {};
                      Native.Show = Elm.Native.Show.make(_elm);
@@ -4971,19 +5008,19 @@ Elm.Random.make = function (_elm)
                     _elm.Random = _elm.Random || {};
                     if (_elm.Random.values)
                     return _elm.Random.values
-                    var N = Elm.Native,
-                        _N = N.Utils.make(_elm),
-                        _L = N.List.make(_elm),
-                        _E = N.Error.make(_elm),
-                        _J = N.JavaScript.make(_elm),
+                    var _N = Elm.Native,
+                        _U = _N.Utils.make(_elm),
+                        _L = _N.List.make(_elm),
+                        _E = _N.Error.make(_elm),
+                        _J = _N.JavaScript.make(_elm),
                         $moduleName = "Random";
-                    var Signal = Elm.Signal.make(_elm);
                     var Native = Native || {};
                     Native.Random = Elm.Native.Random.make(_elm);
+                    var Signal = Elm.Signal.make(_elm);
                     var _op = {};
-                    var range = Native.Random.range;
                     var floatList = Native.Random.floatList;
                     var $float = Native.Random.float_;
+                    var range = Native.Random.range;
                     _elm.Random.values = {_op: _op, range: range, $float: $float, floatList: floatList};
                     return _elm.Random.values
                   };Elm.Regex = Elm.Regex || {};
@@ -4992,11 +5029,11 @@ Elm.Regex.make = function (_elm)
                    _elm.Regex = _elm.Regex || {};
                    if (_elm.Regex.values)
                    return _elm.Regex.values
-                   var N = Elm.Native,
-                       _N = N.Utils.make(_elm),
-                       _L = N.List.make(_elm),
-                       _E = N.Error.make(_elm),
-                       _J = N.JavaScript.make(_elm),
+                   var _N = Elm.Native,
+                       _U = _N.Utils.make(_elm),
+                       _L = _N.List.make(_elm),
+                       _E = _N.Error.make(_elm),
+                       _J = _N.JavaScript.make(_elm),
                        $moduleName = "Regex";
                    var Maybe = Elm.Maybe.make(_elm);
                    var Native = Native || {};
@@ -5004,19 +5041,19 @@ Elm.Regex.make = function (_elm)
                    var _op = {};
                    var splitN = Native.Regex.splitN;
                    var split = Native.Regex.split;
-                   var replaceAll = Native.Regex.replaceAll;
                    var replace = Native.Regex.replace;
-                   var pattern = Native.Regex.pattern;
-                   var findAll = Native.Regex.findAll;
+                   var replaceAll = Native.Regex.replaceAll;
                    var find = Native.Regex.find;
-                   var escape = Native.Regex.escape;
-                   var contains = Native.Regex.contains;
-                   var caseInsensitive = Native.Regex.caseInsensitive;
-                   var Regex = {ctor: "Regex"};
+                   var findAll = Native.Regex.findAll;
                    var Match = F4(function (a,b,c,d)
                                   {
                                     return {_: {}, index: c, match: a, number: d, submatches: b}
                                   });
+                   var contains = Native.Regex.contains;
+                   var caseInsensitive = Native.Regex.caseInsensitive;
+                   var pattern = Native.Regex.pattern;
+                   var escape = Native.Regex.escape;
+                   var Regex = {ctor: "Regex"};
                    _elm.Regex.values = {_op: _op, escape: escape, pattern: pattern, caseInsensitive: caseInsensitive, contains: contains, findAll: findAll, find: find, replaceAll: replaceAll, replace: replace, split: split, splitN: splitN, Regex: Regex, Match: Match};
                    return _elm.Regex.values
                  };Elm.Set = Elm.Set || {};
@@ -5025,29 +5062,16 @@ Elm.Set.make = function (_elm)
                  _elm.Set = _elm.Set || {};
                  if (_elm.Set.values)
                  return _elm.Set.values
-                 var N = Elm.Native,
-                     _N = N.Utils.make(_elm),
-                     _L = N.List.make(_elm),
-                     _E = N.Error.make(_elm),
-                     _J = N.JavaScript.make(_elm),
+                 var _N = Elm.Native,
+                     _U = _N.Utils.make(_elm),
+                     _L = _N.List.make(_elm),
+                     _E = _N.Error.make(_elm),
+                     _J = _N.JavaScript.make(_elm),
                      $moduleName = "Set";
-                 var Maybe = Elm.Maybe.make(_elm);
                  var Dict = Elm.Dict.make(_elm);
                  var List = Elm.List.make(_elm);
+                 var Maybe = Elm.Maybe.make(_elm);
                  var _op = {};
-                 var union = Dict.union;
-                 var toList = Dict.keys;
-                 var singleton = function (k)
-                                 {
-                                   return A2(Dict.singleton,k,{ctor: "_Tuple0"})
-                                 };
-                 var remove = Dict.remove;
-                 var member = Dict.member;
-                 var intersect = Dict.intersect;
-                 var insert = function (k)
-                              {
-                                return A2(Dict.insert,k,{ctor: "_Tuple0"})
-                              };
                  var foldr = F3(function (f,b,s)
                                 {
                                   return A3(Dict.foldr,
@@ -5074,6 +5098,20 @@ Elm.Set.make = function (_elm)
                                             b,
                                             s)
                                 });
+                 var toList = Dict.keys;
+                 var diff = Dict.diff;
+                 var intersect = Dict.intersect;
+                 var union = Dict.union;
+                 var member = Dict.member;
+                 var remove = Dict.remove;
+                 var insert = function (k)
+                              {
+                                return A2(Dict.insert,k,{ctor: "_Tuple0"})
+                              };
+                 var singleton = function (k)
+                                 {
+                                   return A2(Dict.singleton,k,{ctor: "_Tuple0"})
+                                 };
                  var empty = Dict.empty;
                  var fromList = function (xs)
                                 {
@@ -5083,7 +5121,6 @@ Elm.Set.make = function (_elm)
                               {
                                 return fromList(A2(List.map,f,toList(s)))
                               });
-                 var diff = Dict.diff;
                  _elm.Set.values = {_op: _op, empty: empty, singleton: singleton, insert: insert, remove: remove, member: member, foldl: foldl, foldr: foldr, map: map, union: union, intersect: intersect, diff: diff, toList: toList, fromList: fromList};
                  return _elm.Set.values
                };Elm.Signal = Elm.Signal || {};
@@ -5092,15 +5129,15 @@ Elm.Signal.make = function (_elm)
                     _elm.Signal = _elm.Signal || {};
                     if (_elm.Signal.values)
                     return _elm.Signal.values
-                    var N = Elm.Native,
-                        _N = N.Utils.make(_elm),
-                        _L = N.List.make(_elm),
-                        _E = N.Error.make(_elm),
-                        _J = N.JavaScript.make(_elm),
+                    var _N = Elm.Native,
+                        _U = _N.Utils.make(_elm),
+                        _L = _N.List.make(_elm),
+                        _E = _N.Error.make(_elm),
+                        _J = _N.JavaScript.make(_elm),
                         $moduleName = "Signal";
+                    var List = Elm.List.make(_elm);
                     var Native = Native || {};
                     Native.Signal = Elm.Native.Signal.make(_elm);
-                    var List = Elm.List.make(_elm);
                     var _op = {};
                     _op["~"] = F2(function (sf,s)
                                   {
@@ -5112,9 +5149,27 @@ Elm.Signal.make = function (_elm)
                                               sf,
                                               s)
                                   });
+                    _op["<~"] = F2(function (f,s)
+                                   {
+                                     return A2(Native.Signal.lift,f,s)
+                                   });
                     var sampleOn = Native.Signal.sampleOn;
+                    var dropRepeats = Native.Signal.dropRepeats;
+                    var dropWhen = Native.Signal.dropWhen;
+                    var keepWhen = Native.Signal.keepWhen;
+                    var dropIf = Native.Signal.dropIf;
+                    var keepIf = Native.Signal.keepIf;
+                    var countIf = Native.Signal.countIf;
+                    var count = Native.Signal.count;
+                    var combine = A2(List.foldr,
+                                     Native.Signal.lift2(F2(function (x,y)
+                                                            {
+                                                              return {ctor: "::", _0: x, _1: y}
+                                                            })),
+                                     Native.Signal.constant(_J.toList([])));
                     var merges = Native.Signal.merges;
                     var merge = Native.Signal.merge;
+                    var foldp = Native.Signal.foldp;
                     var lift8 = Native.Signal.lift8;
                     var lift7 = Native.Signal.lift7;
                     var lift6 = Native.Signal.lift6;
@@ -5123,26 +5178,8 @@ Elm.Signal.make = function (_elm)
                     var lift3 = Native.Signal.lift3;
                     var lift2 = Native.Signal.lift2;
                     var lift = Native.Signal.lift;
-                    var keepWhen = Native.Signal.keepWhen;
-                    var keepIf = Native.Signal.keepIf;
-                    var foldp = Native.Signal.foldp;
-                    var dropWhen = Native.Signal.dropWhen;
-                    var dropRepeats = Native.Signal.dropRepeats;
-                    var dropIf = Native.Signal.dropIf;
-                    var countIf = Native.Signal.countIf;
-                    var count = Native.Signal.count;
                     var constant = Native.Signal.constant;
-                    var combine = A2(List.foldr,
-                                     Native.Signal.lift2(F2(function (x,y)
-                                                            {
-                                                              return {ctor: "::", _0: x, _1: y}
-                                                            })),
-                                     Native.Signal.constant(_J.toList([])));
                     var Signal = {ctor: "Signal"};
-                    _op["<~"] = F2(function (f,s)
-                                   {
-                                     return A2(Native.Signal.lift,f,s)
-                                   });
                     _elm.Signal.values = {_op: _op, constant: constant, lift: lift, lift2: lift2, lift3: lift3, lift4: lift4, lift5: lift5, lift6: lift6, lift7: lift7, lift8: lift8, foldp: foldp, merge: merge, merges: merges, combine: combine, count: count, countIf: countIf, keepIf: keepIf, dropIf: dropIf, keepWhen: keepWhen, dropWhen: dropWhen, dropRepeats: dropRepeats, sampleOn: sampleOn, Signal: Signal};
                     return _elm.Signal.values
                   };Elm.String = Elm.String || {};
@@ -5151,56 +5188,56 @@ Elm.String.make = function (_elm)
                     _elm.String = _elm.String || {};
                     if (_elm.String.values)
                     return _elm.String.values
-                    var N = Elm.Native,
-                        _N = N.Utils.make(_elm),
-                        _L = N.List.make(_elm),
-                        _E = N.Error.make(_elm),
-                        _J = N.JavaScript.make(_elm),
+                    var _N = Elm.Native,
+                        _U = _N.Utils.make(_elm),
+                        _L = _N.List.make(_elm),
+                        _E = _N.Error.make(_elm),
+                        _J = _N.JavaScript.make(_elm),
                         $moduleName = "String";
+                    var Maybe = Elm.Maybe.make(_elm);
                     var Native = Native || {};
                     Native.String = Elm.Native.String.make(_elm);
-                    var Maybe = Elm.Maybe.make(_elm);
                     var _op = {};
+                    var fromList = Native.String.fromList;
+                    var toList = Native.String.toList;
+                    var toFloat = Native.String.toFloat;
+                    var toInt = Native.String.toInt;
+                    var indices = Native.String.indexes;
+                    var indexes = Native.String.indexes;
+                    var endsWith = Native.String.endsWith;
+                    var startsWith = Native.String.startsWith;
+                    var contains = Native.String.contains;
+                    var all = Native.String.all;
+                    var any = Native.String.any;
+                    var toLower = Native.String.toLower;
+                    var toUpper = Native.String.toUpper;
+                    var lines = Native.String.lines;
                     var words = Native.String.words;
-                    var uncons = Native.String.uncons;
                     var trimRight = Native.String.trimRight;
                     var trimLeft = Native.String.trimLeft;
                     var trim = Native.String.trim;
-                    var toUpper = Native.String.toUpper;
-                    var toLower = Native.String.toLower;
-                    var toList = Native.String.toList;
-                    var toInt = Native.String.toInt;
-                    var toFloat = Native.String.toFloat;
-                    var sub = Native.String.sub;
-                    var startsWith = Native.String.startsWith;
-                    var split = Native.String.split;
-                    var right = Native.String.right;
-                    var reverse = Native.String.reverse;
-                    var repeat = Native.String.repeat;
                     var padRight = Native.String.padRight;
                     var padLeft = Native.String.padLeft;
                     var pad = Native.String.pad;
-                    var map = Native.String.map;
-                    var lines = Native.String.lines;
-                    var length = Native.String.length;
-                    var left = Native.String.left;
-                    var join = Native.String.join;
-                    var isEmpty = Native.String.isEmpty;
-                    var indices = Native.String.indexes;
-                    var indexes = Native.String.indexes;
-                    var fromList = Native.String.fromList;
-                    var foldr = Native.String.foldr;
-                    var foldl = Native.String.foldl;
-                    var filter = Native.String.filter;
-                    var endsWith = Native.String.endsWith;
                     var dropRight = Native.String.dropRight;
                     var dropLeft = Native.String.dropLeft;
-                    var contains = Native.String.contains;
-                    var cons = Native.String.cons;
+                    var right = Native.String.right;
+                    var left = Native.String.left;
+                    var sub = Native.String.sub;
+                    var repeat = Native.String.repeat;
+                    var join = Native.String.join;
+                    var split = Native.String.split;
+                    var foldr = Native.String.foldr;
+                    var foldl = Native.String.foldl;
+                    var reverse = Native.String.reverse;
+                    var filter = Native.String.filter;
+                    var map = Native.String.map;
+                    var length = Native.String.length;
                     var concat = Native.String.concat;
                     var append = Native.String.append;
-                    var any = Native.String.any;
-                    var all = Native.String.all;
+                    var uncons = Native.String.uncons;
+                    var cons = Native.String.cons;
+                    var isEmpty = Native.String.isEmpty;
                     _elm.String.values = {_op: _op, isEmpty: isEmpty, cons: cons, uncons: uncons, append: append, concat: concat, length: length, map: map, filter: filter, reverse: reverse, foldl: foldl, foldr: foldr, split: split, join: join, repeat: repeat, sub: sub, left: left, right: right, dropLeft: dropLeft, dropRight: dropRight, pad: pad, padLeft: padLeft, padRight: padRight, trim: trim, trimLeft: trimLeft, trimRight: trimRight, words: words, lines: lines, toUpper: toUpper, toLower: toLower, any: any, all: all, contains: contains, startsWith: startsWith, endsWith: endsWith, indexes: indexes, indices: indices, toInt: toInt, toFloat: toFloat, toList: toList, fromList: fromList};
                     return _elm.String.values
                   };Elm.Text = Elm.Text || {};
@@ -5209,39 +5246,39 @@ Elm.Text.make = function (_elm)
                   _elm.Text = _elm.Text || {};
                   if (_elm.Text.values)
                   return _elm.Text.values
-                  var N = Elm.Native,
-                      _N = N.Utils.make(_elm),
-                      _L = N.List.make(_elm),
-                      _E = N.Error.make(_elm),
-                      _J = N.JavaScript.make(_elm),
+                  var _N = Elm.Native,
+                      _U = _N.Utils.make(_elm),
+                      _L = _N.List.make(_elm),
+                      _E = _N.Error.make(_elm),
+                      _J = _N.JavaScript.make(_elm),
                       $moduleName = "Text";
                   var Basics = Elm.Basics.make(_elm);
                   var Color = Elm.Color.make(_elm);
                   var Graphics = Graphics || {};
                   Graphics.Element = Elm.Graphics.Element.make(_elm);
-                  var Maybe = Elm.Maybe.make(_elm);
                   var JavaScript = Elm.JavaScript.make(_elm);
+                  var Maybe = Elm.Maybe.make(_elm);
                   var Native = Native || {};
                   Native.Text = Elm.Native.Text.make(_elm);
                   var _op = {};
+                  var asText = Native.Text.asText;
+                  var markdown = Native.Text.markdown;
+                  var plainText = Native.Text.plainText;
+                  var text = Native.Text.text;
+                  var righted = Native.Text.righted;
+                  var centered = Native.Text.centered;
+                  var justified = Native.Text.justified;
+                  var strikeThrough = Native.Text.strikeThrough;
                   var underline = Native.Text.underline;
+                  var overline = Native.Text.overline;
+                  var italic = Native.Text.italic;
+                  var bold = Native.Text.bold;
+                  var color = Native.Text.color;
+                  var height = Native.Text.height;
+                  var link = Native.Text.link;
+                  var monospace = Native.Text.monospace;
                   var typeface = Native.Text.typeface;
                   var toText = Native.Text.toText;
-                  var text = Native.Text.text;
-                  var strikeThrough = Native.Text.strikeThrough;
-                  var righted = Native.Text.righted;
-                  var plainText = Native.Text.plainText;
-                  var overline = Native.Text.overline;
-                  var monospace = Native.Text.monospace;
-                  var markdown = Native.Text.markdown;
-                  var link = Native.Text.link;
-                  var justified = Native.Text.justified;
-                  var italic = Native.Text.italic;
-                  var height = Native.Text.height;
-                  var color = Native.Text.color;
-                  var centered = Native.Text.centered;
-                  var bold = Native.Text.bold;
-                  var asText = Native.Text.asText;
                   var Text = {ctor: "Text"};
                   _elm.Text.values = {_op: _op, toText: toText, typeface: typeface, monospace: monospace, link: link, height: height, color: color, bold: bold, italic: italic, overline: overline, underline: underline, strikeThrough: strikeThrough, justified: justified, centered: centered, righted: righted, text: text, plainText: plainText, markdown: markdown, asText: asText, Text: Text};
                   return _elm.Text.values
@@ -5251,43 +5288,43 @@ Elm.Time.make = function (_elm)
                   _elm.Time = _elm.Time || {};
                   if (_elm.Time.values)
                   return _elm.Time.values
-                  var N = Elm.Native,
-                      _N = N.Utils.make(_elm),
-                      _L = N.List.make(_elm),
-                      _E = N.Error.make(_elm),
-                      _J = N.JavaScript.make(_elm),
+                  var _N = Elm.Native,
+                      _U = _N.Utils.make(_elm),
+                      _L = _N.List.make(_elm),
+                      _E = _N.Error.make(_elm),
+                      _J = _N.JavaScript.make(_elm),
                       $moduleName = "Time";
                   var Basics = Elm.Basics.make(_elm);
                   var Native = Native || {};
                   Native.Time = Elm.Native.Time.make(_elm);
                   var Signal = Elm.Signal.make(_elm);
                   var _op = {};
+                  var delay = Native.Time.delay;
                   var timestamp = Native.Time.timestamp;
                   var since = Native.Time.since;
-                  var millisecond = 1;
-                  var second = 1000 * millisecond;
-                  var minute = 60 * second;
-                  var inSeconds = function (t)
-                                  {
-                                    return t / second
-                                  };
-                  var inMinutes = function (t)
-                                  {
-                                    return t / minute
-                                  };
+                  var every = Native.Time.every;
+                  var fpsWhen = Native.Time.fpsWhen;
+                  var fps = Native.Time.fps;
                   var inMilliseconds = function (t)
                                        {
                                          return t
                                        };
+                  var millisecond = 1;
+                  var second = 1000 * millisecond;
+                  var minute = 60 * second;
                   var hour = 60 * minute;
                   var inHours = function (t)
                                 {
                                   return t / hour
                                 };
-                  var fpsWhen = Native.Time.fpsWhen;
-                  var fps = Native.Time.fps;
-                  var every = Native.Time.every;
-                  var delay = Native.Time.delay;
+                  var inMinutes = function (t)
+                                  {
+                                    return t / minute
+                                  };
+                  var inSeconds = function (t)
+                                  {
+                                    return t / second
+                                  };
                   _elm.Time.values = {_op: _op, millisecond: millisecond, second: second, minute: minute, hour: hour, inMilliseconds: inMilliseconds, inSeconds: inSeconds, inMinutes: inMinutes, inHours: inHours, fps: fps, fpsWhen: fpsWhen, every: every, since: since, timestamp: timestamp, delay: delay};
                   return _elm.Time.values
                 };Elm.Touch = Elm.Touch || {};
@@ -5296,19 +5333,19 @@ Elm.Touch.make = function (_elm)
                    _elm.Touch = _elm.Touch || {};
                    if (_elm.Touch.values)
                    return _elm.Touch.values
-                   var N = Elm.Native,
-                       _N = N.Utils.make(_elm),
-                       _L = N.List.make(_elm),
-                       _E = N.Error.make(_elm),
-                       _J = N.JavaScript.make(_elm),
+                   var _N = Elm.Native,
+                       _U = _N.Utils.make(_elm),
+                       _L = _N.List.make(_elm),
+                       _E = _N.Error.make(_elm),
+                       _J = _N.JavaScript.make(_elm),
                        $moduleName = "Touch";
-                   var Signal = Elm.Signal.make(_elm);
                    var Native = Native || {};
                    Native.Touch = Elm.Native.Touch.make(_elm);
+                   var Signal = Elm.Signal.make(_elm);
                    var Time = Elm.Time.make(_elm);
                    var _op = {};
-                   var touches = Native.Touch.touches;
                    var taps = Native.Touch.taps;
+                   var touches = Native.Touch.touches;
                    var Touch = F6(function (a,b,c,d,e,f)
                                   {
                                     return {_: {}, id: c, t0: f, x: a, x0: d, y: b, y0: e}
@@ -5321,18 +5358,22 @@ Elm.Transform2D.make = function (_elm)
                          _elm.Transform2D = _elm.Transform2D || {};
                          if (_elm.Transform2D.values)
                          return _elm.Transform2D.values
-                         var N = Elm.Native,
-                             _N = N.Utils.make(_elm),
-                             _L = N.List.make(_elm),
-                             _E = N.Error.make(_elm),
-                             _J = N.JavaScript.make(_elm),
+                         var _N = Elm.Native,
+                             _U = _N.Utils.make(_elm),
+                             _L = _N.List.make(_elm),
+                             _E = _N.Error.make(_elm),
+                             _J = _N.JavaScript.make(_elm),
                              $moduleName = "Transform2D";
                          var Native = Native || {};
                          Native.Transform2D = Elm.Native.Transform2D.make(_elm);
                          var _op = {};
-                         var rotation = Native.Transform2D.rotation;
                          var multiply = Native.Transform2D.multiply;
+                         var rotation = Native.Transform2D.rotation;
                          var matrix = Native.Transform2D.matrix;
+                         var translation = F2(function (x,y)
+                                              {
+                                                return A6(matrix,1,0,0,1,x,y)
+                                              });
                          var scale = function (s)
                                      {
                                        return A6(matrix,s,0,0,s,0,0)
@@ -5345,10 +5386,6 @@ Elm.Transform2D.make = function (_elm)
                                       {
                                         return A6(matrix,1,0,0,y,0,0)
                                       };
-                         var translation = F2(function (x,y)
-                                              {
-                                                return A6(matrix,1,0,0,1,x,y)
-                                              });
                          var identity = Native.Transform2D.identity;
                          var Transform2D = {ctor: "Transform2D"};
                          _elm.Transform2D.values = {_op: _op, identity: identity, matrix: matrix, rotation: rotation, translation: translation, scale: scale, scaleX: scaleX, scaleY: scaleY, multiply: multiply, Transform2D: Transform2D};
@@ -5359,16 +5396,16 @@ Elm.WebSocket.make = function (_elm)
                        _elm.WebSocket = _elm.WebSocket || {};
                        if (_elm.WebSocket.values)
                        return _elm.WebSocket.values
-                       var N = Elm.Native,
-                           _N = N.Utils.make(_elm),
-                           _L = N.List.make(_elm),
-                           _E = N.Error.make(_elm),
-                           _J = N.JavaScript.make(_elm),
+                       var _N = Elm.Native,
+                           _U = _N.Utils.make(_elm),
+                           _L = _N.List.make(_elm),
+                           _E = _N.Error.make(_elm),
+                           _J = _N.JavaScript.make(_elm),
                            $moduleName = "WebSocket";
-                       var Signal = Elm.Signal.make(_elm);
                        var Basics = Elm.Basics.make(_elm);
                        var Native = Native || {};
                        Native.WebSocket = Elm.Native.WebSocket.make(_elm);
+                       var Signal = Elm.Signal.make(_elm);
                        var _op = {};
                        var connect = Native.WebSocket.connect;
                        _elm.WebSocket.values = {_op: _op, connect: connect};
@@ -5379,18 +5416,18 @@ Elm.Window.make = function (_elm)
                     _elm.Window = _elm.Window || {};
                     if (_elm.Window.values)
                     return _elm.Window.values
-                    var N = Elm.Native,
-                        _N = N.Utils.make(_elm),
-                        _L = N.List.make(_elm),
-                        _E = N.Error.make(_elm),
-                        _J = N.JavaScript.make(_elm),
+                    var _N = Elm.Native,
+                        _U = _N.Utils.make(_elm),
+                        _L = _N.List.make(_elm),
+                        _E = _N.Error.make(_elm),
+                        _J = _N.JavaScript.make(_elm),
                         $moduleName = "Window";
-                    var Signal = Elm.Signal.make(_elm);
                     var Native = Native || {};
                     Native.Window = Elm.Native.Window.make(_elm);
+                    var Signal = Elm.Signal.make(_elm);
                     var _op = {};
-                    var width = Native.Window.width;
                     var height = Native.Window.height;
+                    var width = Native.Window.width;
                     var dimensions = Native.Window.dimensions;
                     _elm.Window.values = {_op: _op, dimensions: dimensions, width: width, height: height};
                     return _elm.Window.values
@@ -5402,43 +5439,63 @@ Elm.Graphics.Collage.make = function (_elm)
                               _elm.Graphics.Collage = _elm.Graphics.Collage || {};
                               if (_elm.Graphics.Collage.values)
                               return _elm.Graphics.Collage.values
-                              var N = Elm.Native,
-                                  _N = N.Utils.make(_elm),
-                                  _L = N.List.make(_elm),
-                                  _E = N.Error.make(_elm),
-                                  _J = N.JavaScript.make(_elm),
+                              var _N = Elm.Native,
+                                  _U = _N.Utils.make(_elm),
+                                  _L = _N.List.make(_elm),
+                                  _E = _N.Error.make(_elm),
+                                  _J = _N.JavaScript.make(_elm),
                                   $moduleName = "Graphics.Collage";
                               var Basics = Elm.Basics.make(_elm);
-                              var List = Elm.List.make(_elm);
+                              var Color = Elm.Color.make(_elm);
                               var Either = Elm.Either.make(_elm);
-                              var Transform2D = Elm.Transform2D.make(_elm);
+                              var Graphics = Graphics || {};
+                              Graphics.Element = Elm.Graphics.Element.make(_elm);
+                              var JavaScript = Elm.JavaScript.make(_elm);
+                              var List = Elm.List.make(_elm);
+                              var Maybe = Elm.Maybe.make(_elm);
                               var Native = Native || {};
                               Native.Graphics = Native.Graphics || {};
                               Native.Graphics.Collage = Elm.Native.Graphics.Collage.make(_elm);
-                              var Graphics = Graphics || {};
-                              Graphics.Element = Elm.Graphics.Element.make(_elm);
-                              var Color = Elm.Color.make(_elm);
-                              var Maybe = Elm.Maybe.make(_elm);
-                              var JavaScript = Elm.JavaScript.make(_elm);
+                              var Transform2D = Elm.Transform2D.make(_elm);
                               var _op = {};
-                              var segment = F2(function (p1,p2)
-                                               {
-                                                 return _J.toList([p1,p2])
-                                               });
-                              var scale = F2(function (s,f)
-                                             {
-                                               return _N.replace([["scale",f.scale * s]],f)
-                                             });
-                              var rotate = F2(function (t,f)
-                                              {
-                                                return _N.replace([["theta",f.theta + t]],f)
-                                              });
+                              var ngon = F2(function (n,r)
+                                            {
+                                              return function ()
+                                                     {
+                                                       var m = Basics.toFloat(n);
+                                                       var t = 2 * Basics.pi / m;
+                                                       var f = function (i)
+                                                               {
+                                                                 return {ctor: "_Tuple2", _0: r * Basics.cos(t * i), _1: r * Basics.sin(t * i)}
+                                                               };
+                                                       return A2(List.map,f,_L.range(0,m - 1))
+                                                     }()
+                                            });
+                              var oval = F2(function (w,h)
+                                            {
+                                              return function ()
+                                                     {
+                                                       var hh = h / 2;
+                                                       var hw = w / 2;
+                                                       var n = 50;
+                                                       var t = 2 * Basics.pi / n;
+                                                       var f = function (i)
+                                                               {
+                                                                 return {ctor: "_Tuple2", _0: hw * Basics.cos(t * i), _1: hh * Basics.sin(t * i)}
+                                                               };
+                                                       return A2(List.map,f,_L.range(0,n - 1))
+                                                     }()
+                                            });
+                              var circle = function (r)
+                                           {
+                                             return A2(oval,2 * r,2 * r)
+                                           };
                               var rect = F2(function (w,h)
                                             {
                                               return function ()
                                                      {
-                                                       var hw = w / 2;
                                                        var hh = h / 2;
+                                                       var hw = w / 2;
                                                        return _J.toList([{ctor: "_Tuple2", _0: 0 - hw, _1: 0 - hh},
                                                                          {ctor: "_Tuple2", _0: 0 - hw, _1: hh},
                                                                          {ctor: "_Tuple2", _0: hw, _1: hh},
@@ -5453,45 +5510,34 @@ Elm.Graphics.Collage.make = function (_elm)
                                             {
                                               return points
                                             };
+                              var segment = F2(function (p1,p2)
+                                               {
+                                                 return _J.toList([p1,p2])
+                                               });
                               var path = function (ps)
                                          {
                                            return ps
                                          };
-                              var oval = F2(function (w,h)
-                                            {
-                                              return function ()
-                                                     {
-                                                       var n = 50;
-                                                       var t = 2 * Basics.pi / n;
-                                                       var hw = w / 2;
-                                                       var hh = h / 2;
-                                                       var f = function (i)
-                                                               {
-                                                                 return {ctor: "_Tuple2", _0: hw * Basics.cos(t * i), _1: hh * Basics.sin(t * i)}
-                                                               };
-                                                       return A2(List.map,f,_L.range(0,n - 1))
-                                                     }()
-                                            });
-                              var ngon = F2(function (n,r)
-                                            {
-                                              return function ()
-                                                     {
-                                                       var m = Basics.toFloat(n);
-                                                       var t = 2 * Basics.pi / m;
-                                                       var f = function (i)
-                                                               {
-                                                                 return {ctor: "_Tuple2", _0: r * Basics.cos(t * i), _1: r * Basics.sin(t * i)}
-                                                               };
-                                                       return A2(List.map,f,_L.range(0,m - 1))
-                                                     }()
-                                            });
+                              var collage = Native.Graphics.Collage.collage;
+                              var alpha = F2(function (a,f)
+                                             {
+                                               return _U.replace([["alpha",a]],f)
+                                             });
+                              var rotate = F2(function (t,f)
+                                              {
+                                                return _U.replace([["theta",f.theta + t]],f)
+                                              });
+                              var scale = F2(function (s,f)
+                                             {
+                                               return _U.replace([["scale",f.scale * s]],f)
+                                             });
                               var moveY = F2(function (y,f)
                                              {
-                                               return _N.replace([["y",f.y + y]],f)
+                                               return _U.replace([["y",f.y + y]],f)
                                              });
                               var moveX = F2(function (x,f)
                                              {
-                                               return _N.replace([["x",f.x + x]],f)
+                                               return _U.replace([["x",f.x + x]],f)
                                              });
                               var move = F2(function (_v0,f)
                                             {
@@ -5500,7 +5546,7 @@ Elm.Graphics.Collage.make = function (_elm)
                                                        switch (_v0.ctor)
                                                        {case
                                                         "_Tuple2" :
-                                                          return _N.replace([["x",f.x + _v0._0],
+                                                          return _U.replace([["x",f.x + _v0._0],
                                                                              ["y",f.y + _v0._1]],
                                                                             f)}
                                                        _E.Case($moduleName,
@@ -5511,100 +5557,6 @@ Elm.Graphics.Collage.make = function (_elm)
                                          {
                                            return {_: {}, alpha: 1, form: f, scale: 1, theta: 0, x: 0, y: 0}
                                          };
-                              var collage = Native.Graphics.Collage.collage;
-                              var circle = function (r)
-                                           {
-                                             return A2(oval,2 * r,2 * r)
-                                           };
-                              var alpha = F2(function (a,f)
-                                             {
-                                               return _N.replace([["alpha",a]],f)
-                                             });
-                              var Texture = function (a)
-                                            {
-                                              return {ctor: "Texture", _0: a}
-                                            };
-                              var Solid = function (a)
-                                          {
-                                            return {ctor: "Solid", _0: a}
-                                          };
-                              var Smooth = {ctor: "Smooth"};
-                              var Sharp = function (a)
-                                          {
-                                            return {ctor: "Sharp", _0: a}
-                                          };
-                              var Round = {ctor: "Round"};
-                              var Padded = {ctor: "Padded"};
-                              var LineStyle = F6(function (a,b,c,d,e,f)
-                                                 {
-                                                   return {_: {}, cap: c, color: a, dashOffset: f, dashing: e, join: d, width: b}
-                                                 });
-                              var Grad = function (a)
-                                         {
-                                           return {ctor: "Grad", _0: a}
-                                         };
-                              var Form = F6(function (a,b,c,d,e,f)
-                                            {
-                                              return {_: {}, alpha: e, form: f, scale: b, theta: a, x: c, y: d}
-                                            });
-                              var Flat = {ctor: "Flat"};
-                              var defaultLine = {_: {}, cap: Flat, color: Color.black, dashOffset: 0, dashing: _J.toList([]), join: Sharp(10), width: 1};
-                              var dashed = function (clr)
-                                           {
-                                             return _N.replace([["color",clr],
-                                                                ["dashing",_J.toList([8,4])]],
-                                                               defaultLine)
-                                           };
-                              var dotted = function (clr)
-                                           {
-                                             return _N.replace([["color",clr],
-                                                                ["dashing",_J.toList([3,3])]],
-                                                               defaultLine)
-                                           };
-                              var solid = function (clr)
-                                          {
-                                            return _N.replace([["color",clr]],defaultLine)
-                                          };
-                              var FShape = F2(function (a,b)
-                                              {
-                                                return {ctor: "FShape", _0: a, _1: b}
-                                              });
-                              var fill = F2(function (style,shape)
-                                            {
-                                              return form(A2(FShape,Either.Right(style),shape))
-                                            });
-                              var filled = F2(function (color,shape)
-                                              {
-                                                return A2(fill,Solid(color),shape)
-                                              });
-                              var gradient = F2(function (grad,shape)
-                                                {
-                                                  return A2(fill,Grad(grad),shape)
-                                                });
-                              var textured = F2(function (src,shape)
-                                                {
-                                                  return A2(fill,Texture(src),shape)
-                                                });
-                              var outlined = F2(function (style,shape)
-                                                {
-                                                  return form(A2(FShape,Either.Left(style),shape))
-                                                });
-                              var FPath = F2(function (a,b)
-                                             {
-                                               return {ctor: "FPath", _0: a, _1: b}
-                                             });
-                              var traced = F2(function (style,path)
-                                              {
-                                                return form(A2(FPath,style,path))
-                                              });
-                              var FImage = F4(function (a,b,c,d)
-                                              {
-                                                return {ctor: "FImage", _0: a, _1: b, _2: c, _3: d}
-                                              });
-                              var sprite = F4(function (w,h,pos,src)
-                                              {
-                                                return form(A4(FImage,w,h,pos,src))
-                                              });
                               var FGroup = F2(function (a,b)
                                               {
                                                 return {ctor: "FGroup", _0: a, _1: b}
@@ -5625,7 +5577,92 @@ Elm.Graphics.Collage.make = function (_elm)
                                            {
                                              return form(FElement(e))
                                            };
+                              var FImage = F4(function (a,b,c,d)
+                                              {
+                                                return {ctor: "FImage", _0: a, _1: b, _2: c, _3: d}
+                                              });
+                              var sprite = F4(function (w,h,pos,src)
+                                              {
+                                                return form(A4(FImage,w,h,pos,src))
+                                              });
+                              var FShape = F2(function (a,b)
+                                              {
+                                                return {ctor: "FShape", _0: a, _1: b}
+                                              });
+                              var fill = F2(function (style,shape)
+                                            {
+                                              return form(A2(FShape,Either.Right(style),shape))
+                                            });
+                              var outlined = F2(function (style,shape)
+                                                {
+                                                  return form(A2(FShape,Either.Left(style),shape))
+                                                });
+                              var FPath = F2(function (a,b)
+                                             {
+                                               return {ctor: "FPath", _0: a, _1: b}
+                                             });
+                              var traced = F2(function (style,path)
+                                              {
+                                                return form(A2(FPath,style,path))
+                                              });
+                              var LineStyle = F6(function (a,b,c,d,e,f)
+                                                 {
+                                                   return {_: {}, cap: c, color: a, dashOffset: f, dashing: e, join: d, width: b}
+                                                 });
                               var Clipped = {ctor: "Clipped"};
+                              var Sharp = function (a)
+                                          {
+                                            return {ctor: "Sharp", _0: a}
+                                          };
+                              var Smooth = {ctor: "Smooth"};
+                              var Padded = {ctor: "Padded"};
+                              var Round = {ctor: "Round"};
+                              var Flat = {ctor: "Flat"};
+                              var defaultLine = {_: {}, cap: Flat, color: Color.black, dashOffset: 0, dashing: _J.toList([]), join: Sharp(10), width: 1};
+                              var solid = function (clr)
+                                          {
+                                            return _U.replace([["color",clr]],defaultLine)
+                                          };
+                              var dashed = function (clr)
+                                           {
+                                             return _U.replace([["color",clr],
+                                                                ["dashing",_J.toList([8,4])]],
+                                                               defaultLine)
+                                           };
+                              var dotted = function (clr)
+                                           {
+                                             return _U.replace([["color",clr],
+                                                                ["dashing",_J.toList([3,3])]],
+                                                               defaultLine)
+                                           };
+                              var Grad = function (a)
+                                         {
+                                           return {ctor: "Grad", _0: a}
+                                         };
+                              var gradient = F2(function (grad,shape)
+                                                {
+                                                  return A2(fill,Grad(grad),shape)
+                                                });
+                              var Texture = function (a)
+                                            {
+                                              return {ctor: "Texture", _0: a}
+                                            };
+                              var textured = F2(function (src,shape)
+                                                {
+                                                  return A2(fill,Texture(src),shape)
+                                                });
+                              var Solid = function (a)
+                                          {
+                                            return {ctor: "Solid", _0: a}
+                                          };
+                              var filled = F2(function (color,shape)
+                                              {
+                                                return A2(fill,Solid(color),shape)
+                                              });
+                              var Form = F6(function (a,b,c,d,e,f)
+                                            {
+                                              return {_: {}, alpha: e, form: f, scale: b, theta: a, x: c, y: d}
+                                            });
                               _elm.Graphics.Collage.values = {_op: _op, defaultLine: defaultLine, solid: solid, dashed: dashed, dotted: dotted, form: form, fill: fill, filled: filled, textured: textured, gradient: gradient, outlined: outlined, traced: traced, sprite: sprite, toForm: toForm, group: group, groupTransform: groupTransform, move: move, moveX: moveX, moveY: moveY, scale: scale, rotate: rotate, alpha: alpha, collage: collage, path: path, segment: segment, polygon: polygon, rect: rect, square: square, oval: oval, circle: circle, ngon: ngon, Solid: Solid, Texture: Texture, Grad: Grad, Flat: Flat, Round: Round, Padded: Padded, Smooth: Smooth, Sharp: Sharp, Clipped: Clipped, FPath: FPath, FShape: FShape, FImage: FImage, FElement: FElement, FGroup: FGroup, Form: Form, LineStyle: LineStyle};
                               return _elm.Graphics.Collage.values
                             };Elm.Graphics = Elm.Graphics || {};
@@ -5636,88 +5673,227 @@ Elm.Graphics.Element.make = function (_elm)
                               _elm.Graphics.Element = _elm.Graphics.Element || {};
                               if (_elm.Graphics.Element.values)
                               return _elm.Graphics.Element.values
-                              var N = Elm.Native,
-                                  _N = N.Utils.make(_elm),
-                                  _L = N.List.make(_elm),
-                                  _E = N.Error.make(_elm),
-                                  _J = N.JavaScript.make(_elm),
+                              var _N = Elm.Native,
+                                  _U = _N.Utils.make(_elm),
+                                  _L = _N.List.make(_elm),
+                                  _E = _N.Error.make(_elm),
+                                  _J = _N.JavaScript.make(_elm),
                                   $moduleName = "Graphics.Element";
                               var Basics = Elm.Basics.make(_elm);
-                              var Native = Native || {};
-                              Native.Utils = Elm.Native.Utils.make(_elm);
-                              var JavaScript = Elm.JavaScript.make(_elm);
+                              var Color = Elm.Color.make(_elm);
                               var JavaScript = Elm.JavaScript.make(_elm);
                               var List = Elm.List.make(_elm);
-                              var Color = Elm.Color.make(_elm);
                               var Maybe = Elm.Maybe.make(_elm);
+                              var Native = Native || {};
+                              Native.Utils = Elm.Native.Utils.make(_elm);
                               var _op = {};
-                              var widthOf = function (e)
-                                            {
-                                              return e.props.width
-                                            };
-                              var tag = F2(function (name,e)
-                                           {
-                                             return function ()
+                              var DOut = {ctor: "DOut"};
+                              var outward = DOut;
+                              var DIn = {ctor: "DIn"};
+                              var inward = DIn;
+                              var DRight = {ctor: "DRight"};
+                              var right = DRight;
+                              var DLeft = {ctor: "DLeft"};
+                              var left = DLeft;
+                              var DDown = {ctor: "DDown"};
+                              var down = DDown;
+                              var DUp = {ctor: "DUp"};
+                              var up = DUp;
+                              var Position = F4(function (a,b,c,d)
+                                                {
+                                                  return {_: {}, horizontal: a, vertical: b, x: c, y: d}
+                                                });
+                              var Relative = function (a)
+                                             {
+                                               return {ctor: "Relative", _0: a}
+                                             };
+                              var relative = Relative;
+                              var Absolute = function (a)
+                                             {
+                                               return {ctor: "Absolute", _0: a}
+                                             };
+                              var absolute = Absolute;
+                              var N = {ctor: "N"};
+                              var bottomLeftAt = F2(function (x,y)
                                                     {
-                                                      var p = e.props;
-                                                      return {_: {}, element: e.element, props: _N.replace([["tag",
-                                                                                                             JavaScript.fromString(name)]],
-                                                                                                           p)}
-                                                    }()
-                                           });
-                              var sizeOf = function (e)
-                                           {
-                                             return {ctor: "_Tuple2", _0: e.props.width, _1: e.props.height}
-                                           };
-                              var opacity = F2(function (o,e)
-                                               {
-                                                 return function ()
-                                                        {
-                                                          var p = e.props;
-                                                          return {_: {}, element: e.element, props: _N.replace([["opacity",
-                                                                                                                 o]],
-                                                                                                               p)}
-                                                        }()
-                                               });
+                                                      return {_: {}, horizontal: N, vertical: N, x: x, y: y}
+                                                    });
+                              var Z = {ctor: "Z"};
+                              var middle = {_: {}, horizontal: Z, vertical: Z, x: Relative(0.5), y: Relative(0.5)};
+                              var midLeft = _U.replace([["horizontal",N],["x",Absolute(0)]],
+                                                       middle);
+                              var middleAt = F2(function (x,y)
+                                                {
+                                                  return {_: {}, horizontal: Z, vertical: Z, x: x, y: y}
+                                                });
+                              var midLeftAt = F2(function (x,y)
+                                                 {
+                                                   return {_: {}, horizontal: N, vertical: Z, x: x, y: y}
+                                                 });
+                              var midBottomAt = F2(function (x,y)
+                                                   {
+                                                     return {_: {}, horizontal: Z, vertical: N, x: x, y: y}
+                                                   });
+                              var P = {ctor: "P"};
+                              var topLeft = {_: {}, horizontal: N, vertical: P, x: Absolute(0), y: Absolute(0)};
+                              var bottomLeft = _U.replace([["vertical",N]],topLeft);
+                              var topRight = _U.replace([["horizontal",P]],topLeft);
+                              var bottomRight = _U.replace([["horizontal",P]],bottomLeft);
+                              var midRight = _U.replace([["horizontal",P]],midLeft);
+                              var midTop = _U.replace([["vertical",P],["y",Absolute(0)]],middle);
+                              var midBottom = _U.replace([["vertical",N]],midTop);
+                              var topLeftAt = F2(function (x,y)
+                                                 {
+                                                   return {_: {}, horizontal: N, vertical: P, x: x, y: y}
+                                                 });
+                              var topRightAt = F2(function (x,y)
+                                                  {
+                                                    return {_: {}, horizontal: P, vertical: P, x: x, y: y}
+                                                  });
+                              var bottomRightAt = F2(function (x,y)
+                                                     {
+                                                       return {_: {}, horizontal: P, vertical: N, x: x, y: y}
+                                                     });
+                              var midRightAt = F2(function (x,y)
+                                                  {
+                                                    return {_: {}, horizontal: P, vertical: Z, x: x, y: y}
+                                                  });
+                              var midTopAt = F2(function (x,y)
+                                                {
+                                                  return {_: {}, horizontal: Z, vertical: P, x: x, y: y}
+                                                });
+                              var Tiled = {ctor: "Tiled"};
+                              var Cropped = function (a)
+                                            {
+                                              return {ctor: "Cropped", _0: a}
+                                            };
+                              var Fitted = {ctor: "Fitted"};
+                              var Plain = {ctor: "Plain"};
+                              var Custom = {ctor: "Custom"};
+                              var RawHtml = {ctor: "RawHtml"};
+                              var Spacer = {ctor: "Spacer"};
+                              var Flow = F2(function (a,b)
+                                            {
+                                              return {ctor: "Flow", _0: a, _1: b}
+                                            });
+                              var Container = F2(function (a,b)
+                                                 {
+                                                   return {ctor: "Container", _0: a, _1: b}
+                                                 });
+                              var Image = F4(function (a,b,c,d)
+                                             {
+                                               return {ctor: "Image", _0: a, _1: b, _2: c, _3: d}
+                                             });
+                              var emptyStr = JavaScript.fromString("");
                               var link = F2(function (href,e)
                                             {
                                               return function ()
                                                      {
                                                        var p = e.props;
-                                                       return {_: {}, element: e.element, props: _N.replace([["href",
+                                                       return {_: {}, element: e.element, props: _U.replace([["href",
                                                                                                               JavaScript.fromString(href)]],
                                                                                                             p)}
                                                      }()
                                             });
-                              var heightOf = function (e)
-                                             {
-                                               return e.props.height
-                                             };
-                              var emptyStr = JavaScript.fromString("");
+                              var tag = F2(function (name,e)
+                                           {
+                                             return function ()
+                                                    {
+                                                      var p = e.props;
+                                                      return {_: {}, element: e.element, props: _U.replace([["tag",
+                                                                                                             JavaScript.fromString(name)]],
+                                                                                                           p)}
+                                                    }()
+                                           });
                               var color = F2(function (c,e)
                                              {
                                                return function ()
                                                       {
                                                         var p = e.props;
-                                                        return {_: {}, element: e.element, props: _N.replace([["color",
+                                                        return {_: {}, element: e.element, props: _U.replace([["color",
                                                                                                                Maybe.Just(c)]],
                                                                                                              p)}
                                                       }()
                                              });
-                              var Z = {ctor: "Z"};
-                              var middleAt = F2(function (x,y)
-                                                {
-                                                  return {_: {}, horizontal: Z, vertical: Z, x: x, y: y}
-                                                });
-                              var Tiled = {ctor: "Tiled"};
-                              var Spacer = {ctor: "Spacer"};
-                              var Relative = function (a)
+                              var opacity = F2(function (o,e)
+                                               {
+                                                 return function ()
+                                                        {
+                                                          var p = e.props;
+                                                          return {_: {}, element: e.element, props: _U.replace([["opacity",
+                                                                                                                 o]],
+                                                                                                               p)}
+                                                        }()
+                                               });
+                              var height = F2(function (nh,e)
+                                              {
+                                                return function ()
+                                                       {
+                                                         var p = e.props;
+                                                         var props = function ()
+                                                                     {
+                                                                       var _v0 = e.element;
+                                                                       switch (_v0.ctor)
+                                                                       {case
+                                                                        "Image" :
+                                                                          return _U.replace([["width",
+                                                                                              Basics.round(Basics.toFloat(_v0._1) / Basics.toFloat(_v0._2) * Basics.toFloat(nh))]],
+                                                                                            p)}
+                                                                       return p
+                                                                     }();
+                                                         return {_: {}, element: e.element, props: _U.replace([["height",
+                                                                                                                nh]],
+                                                                                                              p)}
+                                                       }()
+                                              });
+                              var width = F2(function (nw,e)
                                              {
-                                               return {ctor: "Relative", _0: a}
+                                               return function ()
+                                                      {
+                                                        var p = e.props;
+                                                        var props = function ()
+                                                                    {
+                                                                      var _v5 = e.element;
+                                                                      switch (_v5.ctor)
+                                                                      {case
+                                                                       "Image" :
+                                                                         return _U.replace([["height",
+                                                                                             Basics.round(Basics.toFloat(_v5._2) / Basics.toFloat(_v5._1) * Basics.toFloat(nw))]],
+                                                                                           p)
+                                                                       case
+                                                                       "RawHtml" :
+                                                                         return _U.replace([["height",
+                                                                                             Basics.snd(A2(Native.Utils.htmlHeight,
+                                                                                                           nw,
+                                                                                                           e.element))]],
+                                                                                           p)}
+                                                                      return p
+                                                                    }();
+                                                        return {_: {}, element: e.element, props: _U.replace([["width",
+                                                                                                               nw]],
+                                                                                                             props)}
+                                                      }()
+                                             });
+                              var size = F3(function (w,h,e)
+                                            {
+                                              return A2(height,h,A2(width,w,e))
+                                            });
+                              var sizeOf = function (e)
+                                           {
+                                             return {ctor: "_Tuple2", _0: e.props.width, _1: e.props.height}
+                                           };
+                              var heightOf = function (e)
+                                             {
+                                               return e.props.height
                                              };
-                              var middle = {_: {}, horizontal: Z, vertical: Z, x: Relative(0.5), y: Relative(0.5)};
-                              var relative = Relative;
-                              var RawHtml = {ctor: "RawHtml"};
+                              var widthOf = function (e)
+                                            {
+                                              return e.props.width
+                                            };
+                              var Element = F2(function (a,b)
+                                               {
+                                                 return {_: {}, element: b, props: a}
+                                               });
                               var Properties = F8(function (a,b,c,d,e,f,g,h)
                                                   {
                                                     return {_: {}, color: e, height: c, hover: h, href: f, id: a, opacity: d, tag: g, width: b}
@@ -5734,75 +5910,6 @@ Elm.Graphics.Element.make = function (_elm)
                                                                                          emptyStr,
                                                                                          {ctor: "_Tuple0"})}
                                                   });
-                              var spacer = F2(function (w,h)
-                                              {
-                                                return A3(newElement,w,h,Spacer)
-                                              });
-                              var empty = A2(spacer,0,0);
-                              var Position = F4(function (a,b,c,d)
-                                                {
-                                                  return {_: {}, horizontal: a, vertical: b, x: c, y: d}
-                                                });
-                              var Plain = {ctor: "Plain"};
-                              var P = {ctor: "P"};
-                              var midRightAt = F2(function (x,y)
-                                                  {
-                                                    return {_: {}, horizontal: P, vertical: Z, x: x, y: y}
-                                                  });
-                              var midTopAt = F2(function (x,y)
-                                                {
-                                                  return {_: {}, horizontal: Z, vertical: P, x: x, y: y}
-                                                });
-                              var topRightAt = F2(function (x,y)
-                                                  {
-                                                    return {_: {}, horizontal: P, vertical: P, x: x, y: y}
-                                                  });
-                              var N = {ctor: "N"};
-                              var bottomLeftAt = F2(function (x,y)
-                                                    {
-                                                      return {_: {}, horizontal: N, vertical: N, x: x, y: y}
-                                                    });
-                              var bottomRightAt = F2(function (x,y)
-                                                     {
-                                                       return {_: {}, horizontal: P, vertical: N, x: x, y: y}
-                                                     });
-                              var midBottomAt = F2(function (x,y)
-                                                   {
-                                                     return {_: {}, horizontal: Z, vertical: N, x: x, y: y}
-                                                   });
-                              var midLeftAt = F2(function (x,y)
-                                                 {
-                                                   return {_: {}, horizontal: N, vertical: Z, x: x, y: y}
-                                                 });
-                              var topLeftAt = F2(function (x,y)
-                                                 {
-                                                   return {_: {}, horizontal: N, vertical: P, x: x, y: y}
-                                                 });
-                              var Image = F4(function (a,b,c,d)
-                                             {
-                                               return {ctor: "Image", _0: a, _1: b, _2: c, _3: d}
-                                             });
-                              var height = F2(function (nh,e)
-                                              {
-                                                return function ()
-                                                       {
-                                                         var p = e.props;
-                                                         var props = function ()
-                                                                     {
-                                                                       var _v0 = e.element;
-                                                                       switch (_v0.ctor)
-                                                                       {case
-                                                                        "Image" :
-                                                                          return _N.replace([["width",
-                                                                                              Basics.round(Basics.toFloat(_v0._1) / Basics.toFloat(_v0._2) * Basics.toFloat(nh))]],
-                                                                                            p)}
-                                                                       return p
-                                                                     }();
-                                                         return {_: {}, element: e.element, props: _N.replace([["height",
-                                                                                                                nh]],
-                                                                                                              p)}
-                                                       }()
-                                              });
                               var image = F3(function (w,h,src)
                                              {
                                                return A3(newElement,
@@ -5814,54 +5921,6 @@ Elm.Graphics.Element.make = function (_elm)
                                                             h,
                                                             JavaScript.fromString(src)))
                                              });
-                              var tiledImage = F3(function (w,h,src)
-                                                  {
-                                                    return A3(newElement,
-                                                              w,
-                                                              h,
-                                                              A4(Image,
-                                                                 Tiled,
-                                                                 w,
-                                                                 h,
-                                                                 JavaScript.fromString(src)))
-                                                  });
-                              var width = F2(function (nw,e)
-                                             {
-                                               return function ()
-                                                      {
-                                                        var p = e.props;
-                                                        var props = function ()
-                                                                    {
-                                                                      var _v5 = e.element;
-                                                                      switch (_v5.ctor)
-                                                                      {case
-                                                                       "Image" :
-                                                                         return _N.replace([["height",
-                                                                                             Basics.round(Basics.toFloat(_v5._2) / Basics.toFloat(_v5._1) * Basics.toFloat(nw))]],
-                                                                                           p)
-                                                                       case
-                                                                       "RawHtml" :
-                                                                         return _N.replace([["height",
-                                                                                             Basics.snd(A2(Native.Utils.htmlHeight,
-                                                                                                           nw,
-                                                                                                           e.element))]],
-                                                                                           p)}
-                                                                      return p
-                                                                    }();
-                                                        return {_: {}, element: e.element, props: _N.replace([["width",
-                                                                                                               nw]],
-                                                                                                             props)}
-                                                      }()
-                                             });
-                              var size = F3(function (w,h,e)
-                                            {
-                                              return A2(height,h,A2(width,w,e))
-                                            });
-                              var Flow = F2(function (a,b)
-                                            {
-                                              return {ctor: "Flow", _0: a, _1: b}
-                                            });
-                              var Fitted = {ctor: "Fitted"};
                               var fittedImage = F3(function (w,h,src)
                                                    {
                                                      return A3(newElement,
@@ -5873,62 +5932,41 @@ Elm.Graphics.Element.make = function (_elm)
                                                                   h,
                                                                   JavaScript.fromString(src)))
                                                    });
-                              var Element = F2(function (a,b)
-                                               {
-                                                 return {_: {}, element: b, props: a}
-                                               });
-                              var DUp = {ctor: "DUp"};
-                              var up = DUp;
-                              var DRight = {ctor: "DRight"};
-                              var right = DRight;
-                              var beside = F2(function (lft,rht)
-                                              {
-                                                return A3(newElement,
-                                                          widthOf(lft) + widthOf(rht),
-                                                          A2(Basics.max,
-                                                             heightOf(lft),
-                                                             heightOf(rht)),
-                                                          A2(Flow,right,_J.toList([lft,rht])))
-                                              });
-                              var DOut = {ctor: "DOut"};
-                              var layers = function (es)
-                                           {
-                                             return function ()
+                              var croppedImage = F4(function (pos,w,h,src)
                                                     {
-                                                      var ws = A2(List.map,widthOf,es);
-                                                      var hs = A2(List.map,heightOf,es);
                                                       return A3(newElement,
-                                                                List.maximum(ws),
-                                                                List.maximum(hs),
-                                                                A2(Flow,DOut,es))
-                                                    }()
-                                           };
-                              var outward = DOut;
-                              var DLeft = {ctor: "DLeft"};
-                              var left = DLeft;
-                              var DIn = {ctor: "DIn"};
-                              var inward = DIn;
-                              var DDown = {ctor: "DDown"};
-                              var above = F2(function (hi,lo)
-                                             {
-                                               return A3(newElement,
-                                                         A2(Basics.max,widthOf(hi),widthOf(lo)),
-                                                         heightOf(hi) + heightOf(lo),
-                                                         A2(Flow,DDown,_J.toList([hi,lo])))
-                                             });
-                              var below = F2(function (lo,hi)
-                                             {
-                                               return A3(newElement,
-                                                         A2(Basics.max,widthOf(hi),widthOf(lo)),
-                                                         heightOf(hi) + heightOf(lo),
-                                                         A2(Flow,DDown,_J.toList([hi,lo])))
-                                             });
-                              var down = DDown;
+                                                                w,
+                                                                h,
+                                                                A4(Image,
+                                                                   Cropped(pos),
+                                                                   w,
+                                                                   h,
+                                                                   JavaScript.fromString(src)))
+                                                    });
+                              var tiledImage = F3(function (w,h,src)
+                                                  {
+                                                    return A3(newElement,
+                                                              w,
+                                                              h,
+                                                              A4(Image,
+                                                                 Tiled,
+                                                                 w,
+                                                                 h,
+                                                                 JavaScript.fromString(src)))
+                                                  });
+                              var container = F4(function (w,h,pos,e)
+                                                 {
+                                                   return A3(newElement,w,h,A2(Container,pos,e))
+                                                 });
+                              var spacer = F2(function (w,h)
+                                              {
+                                                return A3(newElement,w,h,Spacer)
+                                              });
+                              var empty = A2(spacer,0,0);
                               var flow = F2(function (dir,es)
                                             {
                                               return function ()
                                                      {
-                                                       var ws = A2(List.map,widthOf,es);
                                                        var newFlow = F2(function (w,h)
                                                                         {
                                                                           return A3(newElement,
@@ -5937,7 +5975,8 @@ Elm.Graphics.Element.make = function (_elm)
                                                                                     A2(Flow,dir,es))
                                                                         });
                                                        var hs = A2(List.map,heightOf,es);
-                                                       return _N.eq(es,
+                                                       var ws = A2(List.map,widthOf,es);
+                                                       return _U.eq(es,
                                                                     _J.toList([])) ? empty : function ()
                                                                                              {
                                                                                                switch (dir.ctor)
@@ -5976,44 +6015,41 @@ Elm.Graphics.Element.make = function (_elm)
                                                                                              }()
                                                      }()
                                             });
-                              var Custom = {ctor: "Custom"};
-                              var Cropped = function (a)
-                                            {
-                                              return {ctor: "Cropped", _0: a}
-                                            };
-                              var croppedImage = F4(function (pos,w,h,src)
-                                                    {
-                                                      return A3(newElement,
-                                                                w,
-                                                                h,
-                                                                A4(Image,
-                                                                   Cropped(pos),
-                                                                   w,
-                                                                   h,
-                                                                   JavaScript.fromString(src)))
-                                                    });
-                              var Container = F2(function (a,b)
-                                                 {
-                                                   return {ctor: "Container", _0: a, _1: b}
-                                                 });
-                              var container = F4(function (w,h,pos,e)
-                                                 {
-                                                   return A3(newElement,w,h,A2(Container,pos,e))
-                                                 });
-                              var Absolute = function (a)
+                              var above = F2(function (hi,lo)
                                              {
-                                               return {ctor: "Absolute", _0: a}
-                                             };
-                              var absolute = Absolute;
-                              var midLeft = _N.replace([["horizontal",N],["x",Absolute(0)]],
-                                                       middle);
-                              var midRight = _N.replace([["horizontal",P]],midLeft);
-                              var midTop = _N.replace([["vertical",P],["y",Absolute(0)]],middle);
-                              var midBottom = _N.replace([["vertical",N]],midTop);
-                              var topLeft = {_: {}, horizontal: N, vertical: P, x: Absolute(0), y: Absolute(0)};
-                              var bottomLeft = _N.replace([["vertical",N]],topLeft);
-                              var bottomRight = _N.replace([["horizontal",P]],bottomLeft);
-                              var topRight = _N.replace([["horizontal",P]],topLeft);
+                                               return A3(newElement,
+                                                         A2(Basics.max,widthOf(hi),widthOf(lo)),
+                                                         heightOf(hi) + heightOf(lo),
+                                                         A2(Flow,DDown,_J.toList([hi,lo])))
+                                             });
+                              var below = F2(function (lo,hi)
+                                             {
+                                               return A3(newElement,
+                                                         A2(Basics.max,widthOf(hi),widthOf(lo)),
+                                                         heightOf(hi) + heightOf(lo),
+                                                         A2(Flow,DDown,_J.toList([hi,lo])))
+                                             });
+                              var beside = F2(function (lft,rht)
+                                              {
+                                                return A3(newElement,
+                                                          widthOf(lft) + widthOf(rht),
+                                                          A2(Basics.max,
+                                                             heightOf(lft),
+                                                             heightOf(rht)),
+                                                          A2(Flow,right,_J.toList([lft,rht])))
+                                              });
+                              var layers = function (es)
+                                           {
+                                             return function ()
+                                                    {
+                                                      var hs = A2(List.map,heightOf,es);
+                                                      var ws = A2(List.map,widthOf,es);
+                                                      return A3(newElement,
+                                                                List.maximum(ws),
+                                                                List.maximum(hs),
+                                                                A2(Flow,DOut,es))
+                                                    }()
+                                           };
                               _elm.Graphics.Element.values = {_op: _op, empty: empty, widthOf: widthOf, heightOf: heightOf, sizeOf: sizeOf, width: width, height: height, size: size, opacity: opacity, color: color, tag: tag, link: link, emptyStr: emptyStr, newElement: newElement, image: image, fittedImage: fittedImage, croppedImage: croppedImage, tiledImage: tiledImage, container: container, spacer: spacer, flow: flow, above: above, below: below, beside: beside, layers: layers, absolute: absolute, relative: relative, middle: middle, topLeft: topLeft, topRight: topRight, bottomLeft: bottomLeft, bottomRight: bottomRight, midLeft: midLeft, midRight: midRight, midTop: midTop, midBottom: midBottom, middleAt: middleAt, topLeftAt: topLeftAt, topRightAt: topRightAt, bottomLeftAt: bottomLeftAt, bottomRightAt: bottomRightAt, midLeftAt: midLeftAt, midRightAt: midRightAt, midTopAt: midTopAt, midBottomAt: midBottomAt, up: up, down: down, left: left, right: right, inward: inward, outward: outward, Image: Image, Container: Container, Flow: Flow, Spacer: Spacer, RawHtml: RawHtml, Custom: Custom, Plain: Plain, Fitted: Fitted, Cropped: Cropped, Tiled: Tiled, P: P, Z: Z, N: N, Absolute: Absolute, Relative: Relative, DUp: DUp, DDown: DDown, DLeft: DLeft, DRight: DRight, DIn: DIn, DOut: DOut, Properties: Properties, Element: Element, Position: Position};
                               return _elm.Graphics.Element.values
                             };Elm.Graphics = Elm.Graphics || {};
@@ -6024,28 +6060,79 @@ Elm.Graphics.Input.make = function (_elm)
                             _elm.Graphics.Input = _elm.Graphics.Input || {};
                             if (_elm.Graphics.Input.values)
                             return _elm.Graphics.Input.values
-                            var N = Elm.Native,
-                                _N = N.Utils.make(_elm),
-                                _L = N.List.make(_elm),
-                                _E = N.Error.make(_elm),
-                                _J = N.JavaScript.make(_elm),
+                            var _N = Elm.Native,
+                                _U = _N.Utils.make(_elm),
+                                _L = _N.List.make(_elm),
+                                _E = _N.Error.make(_elm),
+                                _J = _N.JavaScript.make(_elm),
                                 $moduleName = "Graphics.Input";
                             var Basics = Elm.Basics.make(_elm);
-                            var Signal = Elm.Signal.make(_elm);
+                            var Graphics = Graphics || {};
+                            Graphics.Element = Elm.Graphics.Element.make(_elm);
+                            var JavaScript = Elm.JavaScript.make(_elm);
+                            var List = Elm.List.make(_elm);
+                            var Maybe = Elm.Maybe.make(_elm);
                             var Native = Native || {};
                             Native.Graphics = Native.Graphics || {};
                             Native.Graphics.Input = Elm.Native.Graphics.Input.make(_elm);
-                            var List = Elm.List.make(_elm);
-                            var Graphics = Graphics || {};
-                            Graphics.Element = Elm.Graphics.Element.make(_elm);
-                            var Maybe = Elm.Maybe.make(_elm);
-                            var JavaScript = Elm.JavaScript.make(_elm);
+                            var Signal = Elm.Signal.make(_elm);
                             var _op = {};
+                            var dropDown = Native.Graphics.Input.dropDown;
+                            var stringDropDown = function (strs)
+                                                 {
+                                                   return dropDown(A2(List.map,
+                                                                      function (s)
+                                                                      {
+                                                                        return {ctor: "_Tuple2", _0: s, _1: s}
+                                                                      },
+                                                                      strs))
+                                                 };
+                            var emptyFieldState = {_: {}, selectionEnd: 0, selectionStart: 0, string: ""};
+                            var fields = Native.Graphics.Input.fields;
+                            var FieldState = F3(function (a,b,c)
+                                                {
+                                                  return {_: {}, selectionEnd: c, selectionStart: b, string: a}
+                                                });
+                            var hoverables = Native.Graphics.Input.hoverables;
+                            var checkboxes = Native.Graphics.Input.checkboxes;
+                            var customButtons = Native.Graphics.Input.customButtons;
+                            var customButton = F3(function (up,hover,down)
+                                                  {
+                                                    return function ()
+                                                           {
+                                                             var pool = customButtons({ctor: "_Tuple0"});
+                                                             return {ctor: "_Tuple2", _0: A4(pool.customButton,
+                                                                                             {ctor: "_Tuple0"},
+                                                                                             up,
+                                                                                             hover,
+                                                                                             down), _1: pool.events}
+                                                           }()
+                                                  });
+                            var buttons = Native.Graphics.Input.buttons;
+                            var button = function (txt)
+                                         {
+                                           return function ()
+                                                  {
+                                                    var pool = buttons({ctor: "_Tuple0"});
+                                                    return {ctor: "_Tuple2", _0: A2(pool.button,
+                                                                                    {ctor: "_Tuple0"},
+                                                                                    txt), _1: pool.events}
+                                                  }()
+                                         };
                             var id = function (x)
                                      {
                                        return x
                                      };
-                            var hoverables = Native.Graphics.Input.hoverables;
+                            var checkbox = function (b)
+                                           {
+                                             return function ()
+                                                    {
+                                                      var cbs = checkboxes(b);
+                                                      return {ctor: "_Tuple2", _0: A2(Signal.lift,
+                                                                                      cbs.checkbox(id),
+                                                                                      cbs.events), _1: cbs.events}
+                                                    }()
+                                           };
                             var hoverable = function (elem)
                                             {
                                               return function ()
@@ -6056,8 +6143,6 @@ Elm.Graphics.Input.make = function (_elm)
                                                                                        elem), _1: pool.events}
                                                      }()
                                             };
-                            var fields = Native.Graphics.Input.fields;
-                            var emptyFieldState = {_: {}, selectionEnd: 0, selectionStart: 0, string: ""};
                             var field = function (placeHolder)
                                         {
                                           return function ()
@@ -6112,55 +6197,6 @@ Elm.Graphics.Input.make = function (_elm)
                                                                                                                        changes))}
                                                  }()
                                         };
-                            var dropDown = Native.Graphics.Input.dropDown;
-                            var stringDropDown = function (strs)
-                                                 {
-                                                   return dropDown(A2(List.map,
-                                                                      function (s)
-                                                                      {
-                                                                        return {ctor: "_Tuple2", _0: s, _1: s}
-                                                                      },
-                                                                      strs))
-                                                 };
-                            var customButtons = Native.Graphics.Input.customButtons;
-                            var customButton = F3(function (up,hover,down)
-                                                  {
-                                                    return function ()
-                                                           {
-                                                             var pool = customButtons({ctor: "_Tuple0"});
-                                                             return {ctor: "_Tuple2", _0: A4(pool.customButton,
-                                                                                             {ctor: "_Tuple0"},
-                                                                                             up,
-                                                                                             hover,
-                                                                                             down), _1: pool.events}
-                                                           }()
-                                                  });
-                            var checkboxes = Native.Graphics.Input.checkboxes;
-                            var checkbox = function (b)
-                                           {
-                                             return function ()
-                                                    {
-                                                      var cbs = checkboxes(b);
-                                                      return {ctor: "_Tuple2", _0: A2(Signal.lift,
-                                                                                      cbs.checkbox(id),
-                                                                                      cbs.events), _1: cbs.events}
-                                                    }()
-                                           };
-                            var buttons = Native.Graphics.Input.buttons;
-                            var button = function (txt)
-                                         {
-                                           return function ()
-                                                  {
-                                                    var pool = buttons({ctor: "_Tuple0"});
-                                                    return {ctor: "_Tuple2", _0: A2(pool.button,
-                                                                                    {ctor: "_Tuple0"},
-                                                                                    txt), _1: pool.events}
-                                                  }()
-                                         };
-                            var FieldState = F3(function (a,b,c)
-                                                {
-                                                  return {_: {}, selectionEnd: c, selectionStart: b, string: a}
-                                                });
                             _elm.Graphics.Input.values = {_op: _op, id: id, buttons: buttons, button: button, customButtons: customButtons, customButton: customButton, checkboxes: checkboxes, checkbox: checkbox, hoverables: hoverables, hoverable: hoverable, fields: fields, emptyFieldState: emptyFieldState, field: field, password: password, email: email, dropDown: dropDown, stringDropDown: stringDropDown, FieldState: FieldState};
                             return _elm.Graphics.Input.values
                           };Elm.JavaScript = Elm.JavaScript || {};
@@ -6171,18 +6207,18 @@ Elm.JavaScript.Experimental.make = function (_elm)
                                      _elm.JavaScript.Experimental = _elm.JavaScript.Experimental || {};
                                      if (_elm.JavaScript.Experimental.values)
                                      return _elm.JavaScript.Experimental.values
-                                     var N = Elm.Native,
-                                         _N = N.Utils.make(_elm),
-                                         _L = N.List.make(_elm),
-                                         _E = N.Error.make(_elm),
-                                         _J = N.JavaScript.make(_elm),
+                                     var _N = Elm.Native,
+                                         _U = _N.Utils.make(_elm),
+                                         _L = _N.List.make(_elm),
+                                         _E = _N.Error.make(_elm),
+                                         _J = _N.JavaScript.make(_elm),
                                          $moduleName = "JavaScript.Experimental";
                                      var JavaScript = Elm.JavaScript.make(_elm);
                                      var Native = Native || {};
                                      Native.JavaScript = Elm.Native.JavaScript.make(_elm);
                                      var _op = {};
-                                     var toRecord = Native.JavaScript.toRecord;
                                      var fromRecord = Native.JavaScript.fromRecord;
+                                     var toRecord = Native.JavaScript.toRecord;
                                      _elm.JavaScript.Experimental.values = {_op: _op, toRecord: toRecord, fromRecord: fromRecord};
                                      return _elm.JavaScript.Experimental.values
                                    };(function() {
@@ -6231,7 +6267,7 @@ function depthFirstTraversals(f, queueOld, queueNew) {
 (function() {
 'use strict';
 
-Elm.fullscreen = function(module) {
+Elm.fullscreen = function(module, ports) {
     var style = document.createElement('style');
     style.type = 'text/css';
     style.innerHTML = "html,head,body { padding:0; margin:0; }" +
@@ -6239,24 +6275,24 @@ Elm.fullscreen = function(module) {
     document.head.appendChild(style);
     var container = document.createElement('div');
     document.body.appendChild(container);
-    return init(ElmRuntime.Display.FULLSCREEN, container, module);
+    return init(ElmRuntime.Display.FULLSCREEN, container, module, ports || {});
 };
 
-Elm.embed = function(module, container) {
+Elm.embed = function(module, container, ports) {
     var tag = container.tagName;
     if (tag !== 'DIV') {
         throw new Error('Elm.node must be given a DIV, not a ' + tag + '.');
     } else if (container.hasChildNodes()) {
         throw new Error('Elm.node must be given an empty DIV. No children allowed!');
     }
-    return init(ElmRuntime.Display.COMPONENT, container, module);
+    return init(ElmRuntime.Display.COMPONENT, container, module, ports || {});
 };
 
-Elm.worker = function(module) {
-    return init(ElmRuntime.Display.NONE, {}, module);
+Elm.worker = function(module, ports) {
+    return init(ElmRuntime.Display.NONE, {}, module, ports || {});
 };
 
-function init(display, container, module, moduleToReplace) {
+function init(display, container, module, ports, moduleToReplace) {
   // defining state needed for an instance of the Elm RTS
   var inputs = [];
 
@@ -6288,6 +6324,10 @@ function init(display, container, module, moduleToReplace) {
       listeners.push(listener);
   }
 
+  var portUses = {}
+  for (var key in ports) {
+      portUses[key] = 0;
+  }
   // create the actual RTS. Any impure modules will attach themselves to this
   // object. This permits many Elm programs to be embedded per document.
   var elm = {
@@ -6296,34 +6336,15 @@ function init(display, container, module, moduleToReplace) {
       display:display,
       id:ElmRuntime.guid(),
       addListener:addListener,
-      inputs:inputs
+      inputs:inputs,
+      ports: { incoming:ports, outgoing:{}, uses:portUses }
   };
-
-  // Set up methods to communicate with Elm program from JS.
-  function send(name, value) {
-      if (typeof value === 'undefined') return function(v) { return send(name,v); };
-      var e = document.createEvent('Event');
-      e.initEvent(name + '_' + elm.id, true, true);
-      e.value = value;
-      document.dispatchEvent(e);
-  }
-  function recv(name, handler) {
-      document.addEventListener(name + '_' + elm.id, handler);
-  }
-
-  recv('log', function(e) {console.log(e.value)});
-  recv('title', function(e) {document.title = e.value});
-  recv('redirect', function(e) {
-    if (e.value.length > 0) { window.location = e.value; }
-  });
 
   function swap(newModule) {
       removeListeners(listeners);
       var div = document.createElement('div');
-      var newElm = init(display, div, newModule, elm);
+      var newElm = init(display, div, newModule, ports, elm);
       inputs = [];
-      // elm.send = newElm.send;
-      // elm.recv = newElm.recv;
       // elm.swap = newElm.swap;
       return newElm;
   }
@@ -6332,6 +6353,7 @@ function init(display, container, module, moduleToReplace) {
   var reportAnyErrors = function() {};
   try {
       Module = module.make(elm);
+      checkPorts(elm);
   } catch(e) {
       var directions = "<br/>&nbsp; &nbsp; Open the developer console for more details."
       Module.main = Elm.Text.make(elm).text('<code>' + e.message + directions + '</code>');
@@ -6339,6 +6361,7 @@ function init(display, container, module, moduleToReplace) {
   }
   inputs = ElmRuntime.filterDeadInputs(inputs);
   filterListeners(inputs, listeners);
+  addReceivers(elm.ports.outgoing);
   if (display !== ElmRuntime.Display.NONE) {
       var graphicsNode = initGraphics(elm, Module);
   }
@@ -6352,9 +6375,27 @@ function init(display, container, module, moduleToReplace) {
   }
 
   reportAnyErrors();
-  return { send:send, recv:recv, swap:swap };
+  return { swap:swap, ports:elm.ports.outgoing };
 };
 
+function checkPorts(elm) {
+    var portUses = elm.ports.uses;
+    for (var key in portUses) {
+        var uses = portUses[key]
+        if (uses === 0) {
+            throw new Error(
+                "Initialization Error: provided port '" + key +
+                "' to a module that does not take it as in input.\n" +
+                "Remove '" + key + "' from the module initialization code.");
+        } else if (uses > 1) {
+            throw new Error(
+                "Initialization Error: port '" + key +
+                "' has been declared multiple times in the Elm code.\n" +
+                "Remove declarations until there is exactly one.");
+        }
+    }
+}
+    
 function filterListeners(inputs, listeners) {
     loop:
     for (var i = listeners.length; i--; ) {
@@ -6372,6 +6413,57 @@ function removeListeners(listeners) {
     for (var i = listeners.length; i--; ) {
         var listener = listeners[i];
         listener.domNode.removeEventListener(listener.eventName, listener.func);
+    }
+}
+
+// add receivers for built-in ports if they are defined
+function addReceivers(ports) {
+    if ('log' in ports) {
+        ports.log.subscribe(function(v) { console.log(v) });
+    }
+    if ('stdout' in ports) {
+        var process = process || {};
+        var handler = process.stdout
+            ? function(v) { process.stdout.write(v); }
+            : function(v) { console.log(v); };
+        ports.stdout.subscribe(handler);
+    }
+    if ('stderr' in ports) {
+        var process = process || {};
+        var handler = process.stderr
+            ? function(v) { process.stderr.write(v); }
+            : function(v) { console.log('Error:' + v); };
+        ports.stderr.subscribe(handler);
+    }
+    if ('title' in ports) {
+        if (typeof ports.title === 'string') {
+            document.title = ports.title;
+        } else {
+            ports.title.subscribe(function(v) { document.title = v; });
+        }
+    }
+    if ('redirect' in ports) {
+        ports.redirect.subscribe(function(v) {
+            if (v.length > 0) window.location = v;
+        });
+    }
+    if ('favicon' in ports) {
+        if (typeof ports.favicon === 'string') {
+            changeFavicon(ports.favicon);
+        } else {
+            ports.favicon.subscribe(changeFavicon);
+        }
+    }
+    function changeFavicon(src) {
+        var link = document.createElement('link');
+        var oldLink = document.getElementById('elm-favicon');
+        link.id = 'elm-favicon';
+        link.rel = 'shortcut icon';
+        link.href = src;
+        if (oldLink) {
+            document.head.removeChild(oldLink);
+        }
+        document.head.appendChild(link);
     }
 }
 
@@ -6393,14 +6485,15 @@ function initGraphics(elm, Module) {
   elm.node.appendChild(Render.render(currentScene));
 
   // set up updates so that the DOM is adjusted as necessary.
-  function domUpdate(newScene, currentScene) {
+  var savedScene = currentScene;
+  function domUpdate(newScene) {
       ElmRuntime.draw(function(_) {
-          Render.update(elm.node.firstChild, currentScene, newScene);
+          Render.update(elm.node.firstChild, savedScene, newScene);
           if (elm.Native.Window) elm.Native.Window.values.resizeIfNeeded();
+          savedScene = newScene;
       });
-      return newScene;
   }
-  var renderer = A3(Signal.foldp, F2(domUpdate), currentScene, signalGraph);
+  var renderer = A2(Signal.lift, domUpdate, signalGraph);
 
   // must check for resize after 'renderer' is created so
   // that changes show up.
@@ -6446,18 +6539,18 @@ ElmRuntime.filterDeadInputs = function(inputs) {
 
 // define the draw function
 var vendors = ['ms', 'moz', 'webkit', 'o'];
-var window = window || {};
-for (var i = 0; i < vendors.length && !window.requestAnimationFrame; ++i) {
-    window.requestAnimationFrame = window[vendors[i]+'RequestAnimationFrame'];
-    window.cancelAnimationFrame  = window[vendors[i]+'CancelAnimationFrame'] ||
-                                   window[vendors[i]+'CancelRequestAnimationFrame'];
+var win = window || {};
+for (var i = 0; i < vendors.length && !win.requestAnimationFrame; ++i) {
+    win.requestAnimationFrame = win[vendors[i]+'RequestAnimationFrame'];
+    win.cancelAnimationFrame  = win[vendors[i]+'CancelAnimationFrame'] ||
+                                win[vendors[i]+'CancelRequestAnimationFrame'];
 }
 
-if (window.requestAnimationFrame && window.cancelAnimationFrame) {
+if (win.requestAnimationFrame && win.cancelAnimationFrame) {
     var previous = 0;
     ElmRuntime.draw = function(callback) {
-        window.cancelAnimationFrame(previous);
-        previous = window.requestAnimationFrame(callback);
+        win.cancelAnimationFrame(previous);
+        previous = win.requestAnimationFrame(callback);
     };
 } else {
     ElmRuntime.draw = function(callback) { callback(); };
@@ -6978,10 +7071,12 @@ function rawHtml(elem) {
     var html = elem.html;
     var args = elem.args;
     var guid = elem.guid;
+    var align = elem.align;
 
     var div = newElement('div');
     div.innerHTML = html;
     div.style.visibility = "hidden";
+    if (align) div.style.textAlign = align;
     document.body.appendChild(div);
 
     for (var i = args.length; i--; ) {
