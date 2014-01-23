@@ -1,9 +1,13 @@
 var vm = require("vm");
 var fs = require("fs");
+var jsdom = require("jsdom").jsdom;
+var doc = jsdom();
+var window = doc.parentWindow;
 
-var sandbox = { document: require('./document-wrapper.js'),
-                window: {},
- 		setTimeout: function(f, n) {f()},
+
+var sandbox = { document: doc,
+                window: window,
+ 		setTimeout: window.setTimeout
 	};
 
 module.exports = function(runtimepath, modulepath) {
