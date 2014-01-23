@@ -3,12 +3,11 @@
 var elmloader = require("./elmloader.js")
 var Elm = elmloader('elm-runtime.js', 'build/Main.js')
 
-var w = Elm.worker(Elm.Squarer)
-var send = w.send('input')
+var w = Elm.worker(Elm.Squarer, {inputs: 0})
 
 console.log("Attempting to send")
 
-w.recv('reply', function(e) {console.log("Got", e.value)});
+w.ports.outputs.subscribe(function(e) {console.log("Got", e.value)});
 
 for (var k = 0; k < 10; k++)
-	send(k);
+	w.ports.inputs.send(k);
