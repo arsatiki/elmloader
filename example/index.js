@@ -1,7 +1,5 @@
-// TODO: Replace with an "Elm loader"
-// elmloader.require([modules])
-var elmloader = require("./elmloader.js")
-var Elm = elmloader('elm-runtime.js', 'build/Main.js')
+var elmloader = require("elmloader")
+var Elm = elmloader('elm-runtime.js', 'Squarer.js')
 
 var w = Elm.worker(Elm.Squarer, {inputs: 0})
 
