@@ -3,7 +3,7 @@ var fs = require("fs");
 
 var sandbox = { document: require('./document-wrapper.js'),
                 window: {},
- 		setTimeout: function(f, n) {f()},
+ 		setTimeout: setTimeout,
 	};
 
 module.exports = function(runtimepath, modulepath) {
