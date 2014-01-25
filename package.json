@@ -1,7 +1,7 @@
 {
   "name": "elmloader",
-  "version": "0.1.0",
-  "description": "A compatibility library to load Elm workers with Node",
+  "version": "0.1.1",
+  "description": "A compatibility library to load Elm workers with Node. Latest version works with Elm 0.11",
   "keywords": ["Elm"],
   "main": "./lib/main.js",
   "scripts": {
