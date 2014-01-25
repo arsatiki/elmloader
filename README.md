@@ -15,3 +15,5 @@ Supported Elm versions
 ----------------------
 
 - Elm 0.11: elmloader 0.1.x
+
+A pre-0.1.0 commit works with Elm 0.10.1 and possibly earlier versions as well.
